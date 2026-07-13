@@ -1,0 +1,54 @@
+use super::TokenKind;
+use std::collections::HashMap;
+
+pub fn keyword_map() -> HashMap<&'static str, TokenKind> {
+    let mut m = HashMap::new();
+    m.insert("auto", TokenKind::Auto);
+    m.insert("break", TokenKind::Break);
+    m.insert("case", TokenKind::Case);
+    m.insert("char", TokenKind::Char);
+    m.insert("const", TokenKind::Const);
+    m.insert("continue", TokenKind::Continue);
+    m.insert("default", TokenKind::Default);
+    m.insert("do", TokenKind::Do);
+    m.insert("double", TokenKind::Double);
+    m.insert("else", TokenKind::Else);
+    m.insert("enum", TokenKind::Enum);
+    m.insert("extern", TokenKind::Extern);
+    m.insert("float", TokenKind::Float);
+    m.insert("for", TokenKind::For);
+    m.insert("goto", TokenKind::Goto);
+    m.insert("if", TokenKind::If);
+    m.insert("inline", TokenKind::Inline);
+    m.insert("int", TokenKind::Int);
+    m.insert("long", TokenKind::Long);
+    m.insert("register", TokenKind::Register);
+    m.insert("restrict", TokenKind::Restrict);
+    m.insert("return", TokenKind::Return);
+    m.insert("short", TokenKind::Short);
+    m.insert("signed", TokenKind::Signed);
+    m.insert("sizeof", TokenKind::Sizeof);
+    m.insert("static", TokenKind::Static);
+    m.insert("struct", TokenKind::Struct);
+    m.insert("switch", TokenKind::Switch);
+    m.insert("typedef", TokenKind::Typedef);
+    m.insert("union", TokenKind::Union);
+    m.insert("unsigned", TokenKind::Unsigned);
+    m.insert("void", TokenKind::Void);
+    m.insert("volatile", TokenKind::Volatile);
+    m.insert("while", TokenKind::While);
+    m.insert("_Bool", TokenKind::Bool);
+    m.insert("_Complex", TokenKind::Complex);
+    m.insert("_Imaginary", TokenKind::Imaginary);
+    m.insert("_Alignas", TokenKind::Alignas);
+    m.insert("_Alignof", TokenKind::Alignof);
+    m.insert("_Atomic", TokenKind::Atomic);
+    m.insert("_Generic", TokenKind::Generic);
+    m.insert("_Noreturn", TokenKind::Noreturn);
+    m.insert("_Static_assert", TokenKind::StaticAssert);
+    m.insert("_Thread_local", TokenKind::ThreadLocal);
+    m.insert("true", TokenKind::True);
+    m.insert("false", TokenKind::False);
+    m.insert("NULL", TokenKind::Null);
+    m
+}

@@ -1,0 +1,56 @@
+use super::TokenKind;
+use std::collections::HashMap;
+
+pub fn keyword_map() -> HashMap<&'static str, TokenKind> {
+    let mut m = HashMap::new();
+    m.insert("package", TokenKind::Package);
+    m.insert("import", TokenKind::Import);
+    m.insert("func", TokenKind::Func);
+    m.insert("var", TokenKind::Var);
+    m.insert("const", TokenKind::Const);
+    m.insert("type", TokenKind::Type);
+    m.insert("struct", TokenKind::Struct);
+    m.insert("interface", TokenKind::Interface);
+    m.insert("map", TokenKind::Map);
+    m.insert("chan", TokenKind::Chan);
+    m.insert("defer", TokenKind::Defer);
+    m.insert("go", TokenKind::Go);
+    m.insert("select", TokenKind::Select);
+    m.insert("case", TokenKind::Case);
+    m.insert("switch", TokenKind::Switch);
+    m.insert("if", TokenKind::If);
+    m.insert("else", TokenKind::Else);
+    m.insert("for", TokenKind::For);
+    m.insert("range", TokenKind::Range);
+    m.insert("break", TokenKind::Break);
+    m.insert("continue", TokenKind::Continue);
+    m.insert("return", TokenKind::Return);
+    m.insert("fallthrough", TokenKind::Fallthrough);
+    m.insert("default", TokenKind::Default);
+    m.insert("goto", TokenKind::Goto);
+    m.insert("nil", TokenKind::Nil);
+    m.insert("true", TokenKind::True);
+    m.insert("false", TokenKind::False);
+    m.insert("iota", TokenKind::Iota);
+    m.insert("string", TokenKind::String);
+    m.insert("bool", TokenKind::Bool);
+    m.insert("int", TokenKind::Int);
+    m.insert("int8", TokenKind::Int8);
+    m.insert("int16", TokenKind::Int16);
+    m.insert("int32", TokenKind::Int32);
+    m.insert("int64", TokenKind::Int64);
+    m.insert("uint", TokenKind::Uint);
+    m.insert("uint8", TokenKind::Uint8);
+    m.insert("uint16", TokenKind::Uint16);
+    m.insert("uint32", TokenKind::Uint32);
+    m.insert("uint64", TokenKind::Uint64);
+    m.insert("uintptr", TokenKind::Uintptr);
+    m.insert("float32", TokenKind::Float32);
+    m.insert("float64", TokenKind::Float64);
+    m.insert("complex64", TokenKind::Complex64);
+    m.insert("complex128", TokenKind::Complex128);
+    m.insert("byte", TokenKind::Byte);
+    m.insert("rune", TokenKind::Rune);
+    m.insert("any", TokenKind::Any);
+    m
+}

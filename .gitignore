@@ -1,0 +1,15 @@
+# Build artifacts
+/target
+**/target
+**/*.rs.bk
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Graxus bridge artifacts (not part of ripex)
+.graxus/
+graxus.yaml

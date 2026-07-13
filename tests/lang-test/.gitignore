@@ -1,0 +1,7 @@
+# Keep the ripex corpus clean: track source fixtures only.
+*.log
+*.tmp
+*.bak
+.idea/
+.vscode/
+.DS_Store

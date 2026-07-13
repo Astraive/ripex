@@ -1,0 +1,67 @@
+[package]
+name = "ripex"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "ripex — hand-written recursive-descent parsers for 8 languages (babel-like, language-agnostic)."
+homepage = "https://github.com/astraive/ripex"
+repository = "https://github.com/astraive/ripex"
+readme = "README.md"
+keywords = ["parser", "parser-combinator", "ast", "code-analysis", "recursive-descent"]
+categories = ["parsing", "development-tools", "compilers"]
+default-run = "ripex"
+exclude = [
+    "/target",
+    "/.graxus",
+    "graxus.yaml",
+]
+
+[lib]
+name = "ripex"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ripex"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli", "lang-all"]
+serde = ["dep:serde"]
+cli = ["dep:anyhow", "dep:clap", "dep:serde_json", "serde"]
+lang-all = ["lang-python", "lang-go", "lang-rust", "lang-c", "lang-cpp", "lang-csharp", "lang-js"]
+lang-python = []
+lang-go = []
+lang-rust = []
+lang-c = []
+lang-cpp = []
+lang-csharp = []
+lang-js = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+anyhow = { version = "1", optional = true }
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = "fat"         # Full link-time optimization
+strip = "symbols"   # Strip debug symbols
+codegen-units = 1   # Maximize optimizations
+panic = "abort"     # Abort on panic (smaller binary)
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "parse_all_langs"
+harness = false
+
+# Benchmark profile: speed over size (the release profile is size-optimized,
+# which penalizes throughput benchmarks; use a dedicated fast profile).
+[profile.bench]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = false

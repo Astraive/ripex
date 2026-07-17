@@ -111,6 +111,11 @@ impl Parser {
             }
             _ if self.is_type_spec_start(self.peek()) => self.parse_declaration(),
             _ => {
+                if self.looks_like_named_type_declaration() {
+                    let declaration = self.parse_declaration();
+                    self.pop_recursion();
+                    return declaration;
+                }
                 let expr = self.parse_expr();
                 if self.peek() == TokenKind::LParen && matches!(&expr, Expr::Ident(_, _)) {
                     self.pos -= 1;
@@ -187,6 +192,58 @@ impl Parser {
         )
     }
 
+    fn looks_like_named_type_declaration(&self) -> bool {
+        if self.peek() != TokenKind::Ident {
+            return false;
+        }
+        let mut offset = 1usize;
+        let mut qualified = false;
+        while self.peek_ahead(offset) == TokenKind::ColonColon
+            && self.peek_ahead(offset + 1) == TokenKind::Ident
+        {
+            qualified = true;
+            offset += 2;
+        }
+        if self.peek_ahead(offset) == TokenKind::Lt {
+            let mut depth = 0usize;
+            loop {
+                match self.peek_ahead(offset) {
+                    TokenKind::Lt => depth += 1,
+                    TokenKind::Gt => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            offset += 1;
+                            break;
+                        }
+                    }
+                    TokenKind::Eof => return false,
+                    _ => {}
+                }
+                offset += 1;
+            }
+        }
+        if self.peek_ahead(offset) == TokenKind::ColonColon
+            && self.peek_ahead(offset + 1) == TokenKind::Ident
+        {
+            return true;
+        }
+        if qualified && self.peek_ahead(offset) == TokenKind::LParen {
+            let first = self.tokens.get(self.pos).map(|token| token.value.as_str());
+            let last = self
+                .tokens
+                .get(self.pos + offset - 1)
+                .map(|token| token.value.as_str());
+            return first == last;
+        }
+        while matches!(
+            self.peek_ahead(offset),
+            TokenKind::Star | TokenKind::Ampersand | TokenKind::AmpersandAmpersand
+        ) {
+            offset += 1;
+        }
+        self.peek_ahead(offset) == TokenKind::Ident
+    }
+
     fn parse_declaration(&mut self) -> Stmt {
         let start = self.peek_token().span.start;
         let mut is_const = false;
@@ -241,7 +298,33 @@ impl Parser {
         }
 
         let base_type = self.parse_type();
-        let name = self.expect_ident();
+        let mut name = if self.peek() == TokenKind::Ident {
+            self.expect_ident()
+        } else {
+            String::new()
+        };
+        if self.peek() == TokenKind::Lt {
+            let mut depth = 0usize;
+            while self.peek() != TokenKind::Eof {
+                match self.peek() {
+                    TokenKind::Lt => depth += 1,
+                    TokenKind::Gt => {
+                        depth = depth.saturating_sub(1);
+                        self.advance();
+                        if depth == 0 {
+                            break;
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+                self.advance();
+            }
+        }
+        while self.peek() == TokenKind::ColonColon {
+            self.advance();
+            name = self.expect_ident();
+        }
 
         if self.peek() == TokenKind::LParen {
             self.advance();
@@ -280,9 +363,23 @@ impl Parser {
                 self.advance();
                 is_override = true;
             }
-            if self.peek() == TokenKind::Eq && self.peek_ahead(1) == TokenKind::IntLit {
+            if self.peek() == TokenKind::Eq
+                && matches!(
+                    self.peek_ahead(1),
+                    TokenKind::IntLit
+                        | TokenKind::Default
+                        | TokenKind::CppDefault
+                        | TokenKind::Delete
+                )
+            {
                 self.advance();
                 self.advance();
+            }
+            if self.peek() == TokenKind::Colon {
+                self.advance();
+                while self.peek() != TokenKind::LBrace && self.peek() != TokenKind::Eof {
+                    self.advance();
+                }
             }
             let body = if self.peek() == TokenKind::LBrace {
                 Some(self.parse_block())
@@ -392,8 +489,22 @@ impl Parser {
     fn parse_for_stmt(&mut self) -> Stmt {
         let tok = self.advance();
         self.expect(TokenKind::LParen);
-        if self.peek() == TokenKind::For && self.peek_ahead(1) == TokenKind::LParen {
-            return self.parse_range_for(tok.span);
+        let mut scan = 0usize;
+        while !matches!(
+            self.peek_ahead(scan),
+            TokenKind::Colon | TokenKind::Semicolon | TokenKind::RParen | TokenKind::Eof
+        ) {
+            scan += 1;
+        }
+        if self.peek_ahead(scan) == TokenKind::Colon {
+            while self.peek() != TokenKind::Colon && self.peek() != TokenKind::Eof {
+                self.advance();
+            }
+            self.advance();
+            let range = self.parse_expr();
+            self.expect(TokenKind::RParen);
+            let body = Box::new(self.parse_stmt());
+            return Stmt::RangeFor(Box::new(Stmt::Empty(tok.span)), range, body, tok.span);
         }
         let init = if self.peek() != TokenKind::Semicolon {
             Some(Box::new(self.parse_stmt()))
@@ -401,7 +512,6 @@ impl Parser {
             self.advance();
             None
         };
-        self.expect(TokenKind::Semicolon);
         let cond = if self.peek() != TokenKind::Semicolon {
             Some(self.parse_expr())
         } else {
@@ -416,15 +526,6 @@ impl Parser {
         self.expect(TokenKind::RParen);
         let body = Box::new(self.parse_stmt());
         Stmt::For(init, cond, post, body, tok.span)
-    }
-
-    fn parse_range_for(&mut self, span: Span) -> Stmt {
-        let init = self.parse_stmt();
-        self.expect(TokenKind::Colon);
-        let expr = self.parse_expr();
-        self.expect(TokenKind::RParen);
-        let body = Box::new(self.parse_stmt());
-        Stmt::RangeFor(Box::new(init), expr, body, span)
     }
 
     fn parse_expr_stmt(&mut self) -> Stmt {
@@ -521,7 +622,12 @@ impl Parser {
     fn parse_namespace(&mut self) -> Decl {
         let start = self.peek_token().span.start;
         self.advance();
-        let name = self.expect_ident();
+        let mut name = self.expect_ident();
+        while self.peek() == TokenKind::ColonColon {
+            self.advance();
+            name.push_str("::");
+            name.push_str(&self.expect_ident());
+        }
         self.expect(TokenKind::LBrace);
         let mut decls = Vec::new();
         while self.peek() != TokenKind::RBrace && self.peek() != TokenKind::Eof {
@@ -543,6 +649,10 @@ impl Parser {
             return Decl::UsingNamespace(ns, Span::new(start, self.prev_end()));
         }
         let name = self.expect_ident();
+        if self.peek() == TokenKind::Eq {
+            self.advance();
+            let _type = self.parse_type();
+        }
         self.expect(TokenKind::Semicolon);
         Decl::Using(name, Span::new(start, self.prev_end()))
     }
@@ -550,6 +660,16 @@ impl Parser {
     fn parse_template(&mut self) -> Decl {
         let start = self.peek_token().span.start;
         self.advance();
+        if self.peek() != TokenKind::Lt {
+            while self.peek() != TokenKind::Semicolon && self.peek() != TokenKind::Eof {
+                self.advance();
+            }
+            self.expect(TokenKind::Semicolon);
+            return Decl::Using(
+                "template-instantiation".to_string(),
+                Span::new(start, self.prev_end()),
+            );
+        }
         self.expect(TokenKind::Lt);
         let mut params = Vec::new();
         while self.peek() != TokenKind::Gt && self.peek() != TokenKind::Eof {

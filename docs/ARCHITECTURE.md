@@ -1,6 +1,6 @@
 # Architecture
 
-ripex is a multi-language parser + fact extractor. Each language lives in its own module under
+ripex is a multi-language parser and fact extractor. Each language lives in its own module under
 `src/<lang>/` (e.g. `src/js`, `src/python`, `src/cpp`). Every parser implements the
 `LanguageParser` trait (`src/lib.rs`) with the same two-phase API:
 
@@ -20,7 +20,9 @@ ripex is a multi-language parser + fact extractor. Each language lives in its ow
 | `calls`      | call sites                           |
 | `variables`  | top-level / notable bindings         |
 
-Every fact carries a `Span` (line/column) so tooling maps it back to source.
+Facts carry source locations appropriate to their kind (`line` or
+`line`/`column`), and `ParseResult::comments` retains source-preserving
+JavaScript/TypeScript hashbang, line, and block comments with full spans.
 
 ## Registration
 
@@ -35,4 +37,22 @@ Recursive-descent loops must always make forward progress. A loop that only adva
 token set spins forever on an unexpected token — this was the bug class caught by the
 `lang-test` corpus and fixed in several parsers. The corpus gate
 (`tests/ripex_lang_test_repos.rs`) hard-asserts zero panics and zero hangs, plus
-non-increasing diagnostic budgets for every language.
+zero parser diagnostics for every language.
+
+## Optional External Validation
+
+`src/compiler.rs` is intentionally independent from the structural ASTs and
+is not part of Ripex's parser implementation. It
+plans bounded external toolchain stages, executes them with captured output,
+normalizes common diagnostic formats, aggregates stage status, and cleans any
+temporary compiler artifacts. File checks use the language compiler directly;
+project checks discover Cargo, Go, TypeScript/JavaScript, and .NET manifests.
+For C and C++, a `compile_commands.json` database is treated as the project
+source of truth: its compilation entries are converted to no-output semantic
+checks while preserving compiler selection, include paths, defines, target
+flags, and generated-header configuration.
+
+The separation is required for correctness: standards-conforming type checking
+depends on project graphs, SDKs, target configuration, macros, and compiler
+versions that are outside a structural parser's AST. `unavailable`, timeout,
+and invocation failures are first-class non-success statuses.

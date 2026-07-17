@@ -3,7 +3,7 @@ import { add, subtract, multiply, divide, power, max } from './utils/math.js';
 import { greet, capitalize, pluralize, truncate } from './utils/strings.js';
 import { User } from './models/user.js';
 import { Product } from './models/product.js';
-import { validateUser, isEmail, sanitize } from './utils/validation.js';
+import { validateUser, isEmail, sanitize } from './validation.js';
 import { calculateArea, safeJsonParse } from './async.js';
 import {
   doubleAll,

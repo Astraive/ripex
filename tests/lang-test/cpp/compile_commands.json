@@ -1,0 +1,22 @@
+[
+  {
+    "directory": ".",
+    "file": "main.cpp",
+    "arguments": ["g++", "-std=c++20", "-pedantic-errors", "-I.", "-c", "main.cpp", "-o", "main.o"]
+  },
+  {
+    "directory": ".",
+    "file": "models/product.cpp",
+    "arguments": ["g++", "-std=c++20", "-pedantic-errors", "-I.", "-c", "models/product.cpp", "-o", "models/product.o"]
+  },
+  {
+    "directory": ".",
+    "file": "models/user.cpp",
+    "arguments": ["g++", "-std=c++20", "-pedantic-errors", "-I.", "-c", "models/user.cpp", "-o", "models/user.o"]
+  },
+  {
+    "directory": ".",
+    "file": "services/service.cpp",
+    "arguments": ["g++", "-std=c++20", "-pedantic-errors", "-I.", "-c", "services/service.cpp", "-o", "services/service.o"]
+  }
+]

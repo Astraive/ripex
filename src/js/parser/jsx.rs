@@ -15,7 +15,9 @@ fn parse_jsx_element_inner(parser: &mut Parser) -> JSXElement {
     let mut children = Vec::new();
 
     if !opening.self_closing {
-        while parser.peek() != TokenKind::Lt && !parser.is_eof() {
+        while !(parser.is_eof()
+            || parser.peek() == TokenKind::Lt && parser.peek_ahead(1) == TokenKind::Slash)
+        {
             if parser.peek() == TokenKind::RBrace || parser.peek() == TokenKind::Eof {
                 break;
             }

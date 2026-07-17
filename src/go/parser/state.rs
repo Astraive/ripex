@@ -10,6 +10,7 @@ pub struct Parser {
     pub errors: Vec<ParseError>,
     pub reporter: DiagnosticReporter,
     pub depth: u32,
+    pub allow_composite_literal: bool,
 }
 
 impl Parser {
@@ -22,6 +23,7 @@ impl Parser {
                 errors: vec![err],
                 reporter: DiagnosticReporter::new(),
                 depth: 0,
+                allow_composite_literal: true,
             };
         }
         let lexer = Lexer::new(source);
@@ -32,6 +34,7 @@ impl Parser {
             errors,
             reporter: DiagnosticReporter::new(),
             depth: 0,
+            allow_composite_literal: true,
         }
     }
 

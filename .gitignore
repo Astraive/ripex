@@ -1,6 +1,7 @@
 # Build artifacts
 /target
 **/target
+node_modules/
 **/*.rs.bk
 
 # Editor / OS noise

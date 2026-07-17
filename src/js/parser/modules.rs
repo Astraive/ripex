@@ -19,6 +19,7 @@ pub fn parse_import(parser: &mut Parser) -> ImportDecl {
                 value: tok.value,
                 raw: String::new(),
             },
+            is_type_only: false,
             assertions: Vec::new(),
         };
     }
@@ -35,11 +36,16 @@ pub fn parse_import(parser: &mut Parser) -> ImportDecl {
                 value: String::new(),
                 raw: String::new(),
             },
+            is_type_only: false,
             assertions: Vec::new(),
         };
     }
 
-    let specifiers = parse_import_clause(parser);
+    let is_type_only = parser.options.features.typescript && parser.peek() == TokenKind::Type;
+    if is_type_only {
+        parser.advance();
+    }
+    let specifiers = parse_import_clause(parser, is_type_only);
 
     parser.expect(TokenKind::From).ok();
 
@@ -50,13 +56,14 @@ pub fn parse_import(parser: &mut Parser) -> ImportDecl {
         raw: String::new(),
     };
 
-    let assertions =
-        if parser.peek() == TokenKind::Assert && parser.options.features.import_attributes {
-            parser.advance();
-            parse_import_assertions(parser)
-        } else {
-            Vec::new()
-        };
+    let assertions = if matches!(parser.peek(), TokenKind::Assert | TokenKind::With)
+        && parser.options.features.import_attributes
+    {
+        parser.advance();
+        parse_import_assertions(parser)
+    } else {
+        Vec::new()
+    };
 
     super::recovery::expect_semicolon(parser);
 
@@ -64,11 +71,12 @@ pub fn parse_import(parser: &mut Parser) -> ImportDecl {
         span: parser.span_since(start),
         specifiers,
         source,
+        is_type_only,
         assertions,
     }
 }
 
-fn parse_import_clause(parser: &mut Parser) -> Vec<ImportSpecifier> {
+fn parse_import_clause(parser: &mut Parser, declaration_type_only: bool) -> Vec<ImportSpecifier> {
     let mut specifiers = Vec::new();
 
     if parser.peek() == TokenKind::Ident || parser.peek() == TokenKind::Default {
@@ -110,6 +118,13 @@ fn parse_import_clause(parser: &mut Parser) -> Vec<ImportSpecifier> {
                 parser.advance();
                 continue;
             }
+            let is_type_only = declaration_type_only
+                || (parser.options.features.typescript
+                    && parser.peek() == TokenKind::Type
+                    && parser.peek_ahead(1) != TokenKind::As);
+            if is_type_only && parser.peek() == TokenKind::Type {
+                parser.advance();
+            }
             let tok = parser.advance();
             let mut imported = Ident {
                 span: tok.span,
@@ -137,6 +152,7 @@ fn parse_import_clause(parser: &mut Parser) -> Vec<ImportSpecifier> {
                 span: tok.span,
                 imported,
                 local,
+                is_type_only,
             }));
             if parser.peek() == TokenKind::Comma {
                 parser.advance();
@@ -151,6 +167,15 @@ fn parse_import_clause(parser: &mut Parser) -> Vec<ImportSpecifier> {
 pub fn parse_export(parser: &mut Parser) -> ExportDecl {
     let start = parser.current_pos();
     parser.expect(TokenKind::Export).ok();
+
+    // Preserve `export type { ... }` and `export type * from ...` while
+    // leaving `export type Name = ...` for the TypeScript declaration parser.
+    let is_type_only = parser.options.features.typescript
+        && parser.peek() == TokenKind::Type
+        && matches!(parser.peek_ahead(1), TokenKind::LBrace | TokenKind::Star);
+    if is_type_only {
+        parser.advance();
+    }
 
     if parser.peek() == TokenKind::Default {
         parser.advance();
@@ -179,6 +204,7 @@ pub fn parse_export(parser: &mut Parser) -> ExportDecl {
                         name: exported.value,
                         optional: false,
                     },
+                    is_type_only,
                 }],
                 source: Some(StrLit {
                     span: source_token.span,
@@ -186,6 +212,7 @@ pub fn parse_export(parser: &mut Parser) -> ExportDecl {
                     raw: String::new(),
                 }),
                 decl: None,
+                is_type_only,
             });
         }
         if parser.peek() == TokenKind::From {
@@ -200,6 +227,7 @@ pub fn parse_export(parser: &mut Parser) -> ExportDecl {
             return ExportDecl::All(ExportAll {
                 span: parser.span_since(start),
                 source,
+                is_type_only,
             });
         } else {
             super::recovery::expect_semicolon(parser);
@@ -208,12 +236,13 @@ pub fn parse_export(parser: &mut Parser) -> ExportDecl {
                 specifiers: Vec::new(),
                 source: None,
                 decl: None,
+                is_type_only,
             });
         }
     }
 
     if parser.peek() == TokenKind::LBrace {
-        return parse_export_named(parser, start);
+        return parse_export_named(parser, start, is_type_only);
     }
 
     if let Some(decl) = super::declarations::parse_decl(parser) {
@@ -225,6 +254,7 @@ pub fn parse_export(parser: &mut Parser) -> ExportDecl {
             specifiers: Vec::new(),
             source: None,
             decl: Some(Box::new(decl)),
+            is_type_only: false,
         });
     }
 
@@ -236,6 +266,7 @@ pub fn parse_export(parser: &mut Parser) -> ExportDecl {
         specifiers: Vec::new(),
         source: None,
         decl: None,
+        is_type_only: false,
     })
 }
 
@@ -296,6 +327,7 @@ fn parse_export_default(parser: &mut Parser, start: usize) -> ExportDecl {
                 specifiers: Vec::new(),
                 source: None,
                 decl: Some(Box::new(Decl::TsInterface(iface))),
+                is_type_only: false,
             });
         }
         _ => {}
@@ -353,7 +385,11 @@ fn parse_import_assertions(parser: &mut Parser) -> Vec<ImportAttribute> {
     assertions
 }
 
-fn parse_export_named(parser: &mut Parser, start: usize) -> ExportDecl {
+fn parse_export_named(
+    parser: &mut Parser,
+    start: usize,
+    declaration_type_only: bool,
+) -> ExportDecl {
     parser.expect(TokenKind::LBrace).ok();
     let mut specifiers = Vec::new();
     while parser.peek() != TokenKind::RBrace && !parser.is_eof() {
@@ -361,22 +397,31 @@ fn parse_export_named(parser: &mut Parser, start: usize) -> ExportDecl {
             parser.advance();
             continue;
         }
+        let is_type_only = declaration_type_only
+            || (parser.options.features.typescript
+                && parser.peek() == TokenKind::Type
+                && parser.peek_ahead(1) != TokenKind::As);
+        let specifier_start = parser.current_pos();
+        if is_type_only && parser.peek() == TokenKind::Type {
+            parser.advance();
+        }
         let tok = parser.advance();
         if parser.peek() == TokenKind::As {
             parser.advance();
-            let local_tok = parser.advance();
+            let exported_tok = parser.advance();
             specifiers.push(ExportSpecifier {
-                span: tok.span,
+                span: parser.span_since(specifier_start),
                 local: Ident {
-                    span: local_tok.span,
-                    name: local_tok.value,
-                    optional: false,
-                },
-                exported: Ident {
                     span: tok.span,
                     name: tok.value,
                     optional: false,
                 },
+                exported: Ident {
+                    span: exported_tok.span,
+                    name: exported_tok.value,
+                    optional: false,
+                },
+                is_type_only,
             });
         } else {
             let name = tok.value.clone();
@@ -392,6 +437,7 @@ fn parse_export_named(parser: &mut Parser, start: usize) -> ExportDecl {
                     name,
                     optional: false,
                 },
+                is_type_only,
             });
         }
         if parser.peek() == TokenKind::Comma {
@@ -419,5 +465,6 @@ fn parse_export_named(parser: &mut Parser, start: usize) -> ExportDecl {
         specifiers,
         source,
         decl: None,
+        is_type_only: declaration_type_only,
     })
 }

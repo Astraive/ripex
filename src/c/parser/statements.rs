@@ -121,6 +121,13 @@ impl Parser {
                 self.parse_declaration()
             }
             _ => {
+                if self.peek() == TokenKind::Ident
+                    && matches!(self.peek_ahead(1), TokenKind::Ident | TokenKind::Star)
+                {
+                    let declaration = self.parse_declaration();
+                    self.pop_recursion();
+                    return declaration;
+                }
                 let expr = self.parse_expr();
                 if self.peek() == TokenKind::LParen && matches!(&expr, Expr::Ident(_, _)) {
                     // Function call that looks like a declaration
@@ -184,6 +191,14 @@ impl Parser {
                     storage_class = Some("register".to_string());
                     self.advance();
                 }
+                TokenKind::Typedef => {
+                    storage_class = Some("typedef".to_string());
+                    self.advance();
+                }
+                TokenKind::ThreadLocal => {
+                    storage_class = Some("_Thread_local".to_string());
+                    self.advance();
+                }
                 TokenKind::Const => {
                     is_const = true;
                     self.advance();
@@ -212,12 +227,55 @@ impl Parser {
             String::new()
         };
 
+        // Function-pointer declarator, e.g. `typedef int (*binary_op)(int, int)`.
+        if name.is_empty()
+            && self.peek() == TokenKind::LParen
+            && self.peek_ahead(1) == TokenKind::Star
+        {
+            self.advance();
+            self.advance();
+            let pointer_name = self.expect_ident();
+            self.expect(TokenKind::RParen);
+            if self.peek() == TokenKind::LParen {
+                let mut depth = 0usize;
+                while self.peek() != TokenKind::Eof {
+                    match self.peek() {
+                        TokenKind::LParen => depth += 1,
+                        TokenKind::RParen => {
+                            depth = depth.saturating_sub(1);
+                            self.advance();
+                            if depth == 0 {
+                                break;
+                            }
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    self.advance();
+                }
+            }
+            self.expect(TokenKind::Semicolon);
+            return Stmt::VarDecl(
+                VarDecl {
+                    type_: Box::new(base_type),
+                    name: pointer_name,
+                    init: None,
+                    is_const,
+                    storage_class,
+                    span: Span::new(start, self.prev_end()),
+                },
+                Span::new(start, self.prev_end()),
+            );
+        }
+
         // Check if function declaration
         if self.peek() == TokenKind::LParen {
             // Function
             self.advance();
             let mut params = Vec::new();
-            if self.peek() != TokenKind::RParen && self.peek() != TokenKind::Void {
+            if self.peek() == TokenKind::Void && self.peek_ahead(1) == TokenKind::RParen {
+                self.advance();
+            } else if self.peek() != TokenKind::RParen {
                 while self.peek() != TokenKind::RParen && self.peek() != TokenKind::Eof {
                     let ptype = self.parse_type();
                     let pname =
@@ -261,6 +319,13 @@ impl Parser {
             )
         } else {
             // Variable declaration
+            while self.peek() == TokenKind::LBracket {
+                self.advance();
+                if self.peek() != TokenKind::RBracket {
+                    self.parse_expr();
+                }
+                self.expect(TokenKind::RBracket);
+            }
             let init = if self.peek() == TokenKind::Eq {
                 self.advance();
                 Some(self.parse_expr())
@@ -367,7 +432,6 @@ impl Parser {
             self.advance();
             None
         };
-        self.expect(TokenKind::Semicolon);
         let cond = if self.peek() != TokenKind::Semicolon {
             Some(self.parse_expr())
         } else {

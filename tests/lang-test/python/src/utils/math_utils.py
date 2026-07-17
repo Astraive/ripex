@@ -17,7 +17,7 @@ def squares(xs: List[int]) -> List[int]:
     return [x * x for x in xs if x > 0]
 
 
-def process(data: List[int]):
+def process(data: List[int]) -> int:
     if (n := len(data)) > 100:
         print(f"large input: {n}")
     return n

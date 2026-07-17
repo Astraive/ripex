@@ -230,7 +230,7 @@ impl Printer {
                 if let Some(init) = &s.init {
                     match init {
                         ForInit::Expr(e) => self.print_expr(*e, ast),
-                        ForInit::Decl(d) => self.print_decl(d, ast),
+                        ForInit::Decl(d) => self.print_for_decl(d, ast),
                     }
                 }
                 self.push("; ");
@@ -248,7 +248,7 @@ impl Printer {
                 self.push("for (");
                 match &s.left {
                     ForInit::Expr(e) => self.print_expr(*e, ast),
-                    ForInit::Decl(d) => self.print_decl(d, ast),
+                    ForInit::Decl(d) => self.print_for_decl(d, ast),
                 }
                 self.push(" in ");
                 self.print_expr(s.right, ast);
@@ -263,7 +263,7 @@ impl Printer {
                 self.push("(");
                 match &s.left {
                     ForInit::Expr(e) => self.print_expr(*e, ast),
-                    ForInit::Decl(d) => self.print_decl(d, ast),
+                    ForInit::Decl(d) => self.print_for_decl(d, ast),
                 }
                 self.push(" of ");
                 self.print_expr(s.right, ast);
@@ -663,7 +663,7 @@ impl Printer {
             }
             Expr::Binary(b) => {
                 self.print_expr(b.left, ast);
-                self.push(" ");
+                self.push("\n");
                 self.push(match b.op {
                     BinaryOp::EqEq => "==",
                     BinaryOp::NotEq => "!=",
@@ -689,7 +689,7 @@ impl Printer {
                     BinaryOp::Instanceof => "instanceof",
                     BinaryOp::StarStar => "**",
                 });
-                self.push(" ");
+                self.push("\n");
                 self.print_expr(b.right, ast);
             }
             Expr::Logical(l) => {
@@ -852,7 +852,9 @@ impl Printer {
                 self.push(">");
             }
             Expr::PrivateName(p) => {
-                self.push("#");
+                if !p.name.name.starts_with('#') {
+                    self.push("#");
+                }
                 self.push(&p.name.name);
             }
             Expr::Invalid(_) => self.push("<invalid>"),
@@ -943,7 +945,7 @@ impl Printer {
         self.push("<");
         self.print_jsx_name(&el.opening.name);
         for attr in &el.opening.attrs {
-            self.push(" ");
+            self.push("\n");
             match attr {
                 JSXAttr::Attr(a) => {
                     self.print_jsx_name(&a.name);
@@ -983,6 +985,7 @@ impl Printer {
                     JSXChild::Element(el2) => self.print_jsx_element(el2, ast),
                     JSXChild::Fragment(frag) => self.print_jsx_fragment(frag, ast),
                 }
+                self.push("\n");
             }
             if let Some(closing) = &el.closing {
                 self.push("</");
@@ -1005,6 +1008,7 @@ impl Printer {
                 JSXChild::Element(el) => self.print_jsx_element(el, ast),
                 JSXChild::Fragment(f) => self.print_jsx_fragment(f, ast),
             }
+            self.push("\n");
         }
         self.push("</>");
     }
@@ -1225,6 +1229,9 @@ impl Printer {
         match decl {
             Decl::Var(d) => self.print_var_decl(d, ast),
             Decl::Fn(d) => {
+                if d.async_ {
+                    self.push("async ");
+                }
                 self.push("function");
                 if d.generator {
                     self.push("*");
@@ -1411,6 +1418,29 @@ impl Printer {
         self.push(";\n");
     }
 
+    fn print_for_decl(&mut self, decl: &Decl, ast: &mut Arena<Expr>) {
+        if let Decl::Var(var) = decl {
+            self.push(match var.kind {
+                VarKind::Var => "var ",
+                VarKind::Let => "let ",
+                VarKind::Const => "const ",
+                VarKind::Using => "using ",
+            });
+            for (index, item) in var.decls.iter().enumerate() {
+                if index > 0 {
+                    self.push(", ");
+                }
+                self.print_pat(&item.name, ast);
+                if let Some(init) = item.init {
+                    self.push(" = ");
+                    self.print_expr(init, ast);
+                }
+            }
+        } else {
+            self.print_decl(decl, ast);
+        }
+    }
+
     fn print_pat(&mut self, pat: &Pat, ast: &mut Arena<Expr>) {
         match pat {
             Pat::Ident(bi) => self.push(&bi.id.name),
@@ -1422,9 +1452,19 @@ impl Printer {
                     }
                     match prop {
                         ObjectPatProp::KeyValue(kv) => {
-                            self.print_prop_name(&kv.key, ast);
-                            self.push(": ");
-                            self.print_pat(&kv.value, ast);
+                            let shorthand_default = match (&kv.key, kv.value.as_ref()) {
+                                (PropName::Ident(key), Pat::Assign(assign)) => {
+                                    matches!(assign.left.as_ref(), Pat::Ident(binding) if binding.id.name == key.name)
+                                }
+                                _ => false,
+                            };
+                            if shorthand_default {
+                                self.print_pat(&kv.value, ast);
+                            } else {
+                                self.print_prop_name(&kv.key, ast);
+                                self.push(": ");
+                                self.print_pat(&kv.value, ast);
+                            }
                         }
                         ObjectPatProp::Shorthand(bi) => self.push(&bi.id.name),
                         ObjectPatProp::Rest(rp) => {

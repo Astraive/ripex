@@ -371,6 +371,35 @@ impl Parser {
             }
             TokenKind::LParen => {
                 self.advance();
+                let is_cast = matches!(
+                    self.peek(),
+                    TokenKind::Void
+                        | TokenKind::Char
+                        | TokenKind::Short
+                        | TokenKind::Int
+                        | TokenKind::Long
+                        | TokenKind::Float
+                        | TokenKind::Double
+                        | TokenKind::Signed
+                        | TokenKind::Unsigned
+                        | TokenKind::Bool
+                        | TokenKind::Struct
+                        | TokenKind::Union
+                        | TokenKind::Enum
+                        | TokenKind::Const
+                        | TokenKind::Volatile
+                ) || (self.peek() == TokenKind::Ident
+                    && self.peek_ahead(1) == TokenKind::Star);
+                if is_cast {
+                    let type_ = self.parse_type();
+                    self.expect(TokenKind::RParen);
+                    let value = self.parse_unary();
+                    return Expr::Cast(
+                        Box::new(type_),
+                        Box::new(value),
+                        Span::new(start, self.prev_end()),
+                    );
+                }
                 let expr = self.parse_expr();
                 self.expect(TokenKind::RParen);
                 Expr::Paren(Box::new(expr), Span::new(start, self.prev_end()))

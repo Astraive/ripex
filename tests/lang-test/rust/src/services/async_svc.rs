@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 pub async fn fetch_json(url: &str) -> Result<String, String> {
-    tokio::time::sleep(Duration::from_millis(0)).await;
+    let _delay = Duration::from_millis(0);
     Ok(url.to_string())
 }
 

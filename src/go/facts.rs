@@ -115,7 +115,8 @@ fn symbols_from_decl(decl: &Decl) -> Vec<ParsedSymbol> {
 }
 
 fn variables_from_func(fd: &FuncDecl) -> Vec<ParsedVariable> {
-    fd.params
+    let mut variables: Vec<_> = fd
+        .params
         .iter()
         .map(|(name, typ)| {
             ParsedVariable::builder(name, VarKind::Parameter)
@@ -124,7 +125,71 @@ fn variables_from_func(fd: &FuncDecl) -> Vec<ParsedVariable> {
                 .line(fd.span.start.line)
                 .build()
         })
-        .collect()
+        .collect();
+    if let Some(body) = &fd.body {
+        variables.extend(variables_from_block(body));
+    }
+    variables
+}
+
+fn variables_from_block(block: &Block) -> Vec<ParsedVariable> {
+    block.stmts.iter().flat_map(variables_from_stmt).collect()
+}
+
+fn variables_from_stmt(stmt: &Stmt) -> Vec<ParsedVariable> {
+    match stmt {
+        Stmt::Decl(decl, _) => variables_from_decl(decl),
+        Stmt::Define(names, _, span) => names
+            .iter()
+            .filter_map(|expr| match expr {
+                Expr::Ident(name, _) if name != "_" => Some(
+                    ParsedVariable::builder(name, VarKind::Let)
+                        .mutable(true)
+                        .line(span.start.line)
+                        .build(),
+                ),
+                _ => None,
+            })
+            .collect(),
+        Stmt::If(_, body, alternate, _) => {
+            let mut values = variables_from_stmt(body);
+            if let Some(alternate) = alternate {
+                values.extend(variables_from_stmt(alternate));
+            }
+            values
+        }
+        Stmt::For(init, _, post, body, _) => {
+            let mut values = init.as_deref().map(variables_from_stmt).unwrap_or_default();
+            if let Some(post) = post {
+                values.extend(variables_from_stmt(post));
+            }
+            values.extend(variables_from_stmt(body));
+            values
+        }
+        Stmt::ForRange(_, first, second, body, span) => {
+            let mut values = Vec::new();
+            for name in std::iter::once(first)
+                .chain(second.iter())
+                .filter(|name| !name.is_empty() && name.as_str() != "_")
+            {
+                values.push(
+                    ParsedVariable::builder(name, VarKind::Let)
+                        .mutable(true)
+                        .line(span.start.line)
+                        .build(),
+                );
+            }
+            values.extend(variables_from_stmt(body));
+            values
+        }
+        Stmt::Switch(_, cases, _) | Stmt::Select(cases, _) => cases
+            .iter()
+            .flat_map(|case| case.body.iter().flat_map(variables_from_stmt))
+            .collect(),
+        Stmt::Block(block, _) => variables_from_block(block),
+        Stmt::Label(_, body, _) => variables_from_stmt(body),
+        _ => Vec::new(),
+    }
 }
 
 fn symbol_from_func(fd: &FuncDecl) -> ParsedSymbol {
@@ -228,6 +293,17 @@ fn imports_from_decl(decl: &Decl) -> Vec<ParsedImport> {
             }
             vec![builder.build()]
         }
+        Decl::ImportGroup(imports, span) => imports
+            .iter()
+            .map(|id| {
+                let mut builder =
+                    ParsedImport::builder(ImportKind::GoImport, &id.path).line(span.start.line);
+                if let Some(alias) = &id.alias {
+                    builder = builder.local(alias);
+                }
+                builder.build()
+            })
+            .collect(),
         _ => vec![],
     }
 }
@@ -289,7 +365,7 @@ fn calls_from_stmt(stmt: &Stmt) -> Vec<ParsedCall> {
     match stmt {
         Stmt::Expr(expr, _) => calls_from_expr(expr),
         Stmt::Decl(decl, _) => calls_from_decl(decl),
-        Stmt::Assign(left, right, _) => {
+        Stmt::Assign(left, right, _) | Stmt::Define(left, right, _) => {
             let mut calls = Vec::new();
             for e in left {
                 calls.extend(calls_from_expr(e));

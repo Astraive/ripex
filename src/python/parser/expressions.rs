@@ -384,10 +384,24 @@ impl Parser {
                             have_slice = true;
                             lower = Some(Box::new(first));
                         } else {
+                            let index = if self.peek() == TokenKind::Comma {
+                                let tuple_start = first.span().start;
+                                let mut elements = vec![first];
+                                while self.peek() == TokenKind::Comma {
+                                    self.advance();
+                                    if self.peek() == TokenKind::RBracket {
+                                        break;
+                                    }
+                                    elements.push(self.parse_expr());
+                                }
+                                Expr::Tuple(elements, Span::new(tuple_start, self.prev_end()))
+                            } else {
+                                first
+                            };
                             self.expect(TokenKind::RBracket);
                             expr = Expr::Subscript(
                                 Box::new(expr),
-                                Box::new(first),
+                                Box::new(index),
                                 Span::new(start, self.prev_end()),
                             );
                             continue;

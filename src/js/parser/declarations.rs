@@ -192,6 +192,8 @@ pub fn parse_class_decl(parser: &mut Parser) -> ClassDecl {
         optional: false,
     };
 
+    let _type_params = super::typescript::maybe_parse_ts_type_params(parser);
+
     let super_class = if parser.peek() == TokenKind::Extends {
         parser.advance();
         let expr = expressions::parse_expr(parser, 17);
@@ -264,6 +266,8 @@ pub fn parse_class_decl_with_decorators(
         name: id_tok.value,
         optional: false,
     };
+
+    let _type_params = super::typescript::maybe_parse_ts_type_params(parser);
 
     let super_class = if parser.peek() == TokenKind::Extends {
         parser.advance();
@@ -345,6 +349,10 @@ fn parse_fn_params(parser: &mut Parser) -> Vec<Pat> {
             break;
         }
         let pat = patterns::parse_binding_pat(parser);
+        if parser.peek() == TokenKind::Colon && parser.options.features.typescript {
+            parser.advance();
+            let _type_ann = super::typescript::parse_ts_type(parser);
+        }
         if parser.peek() == TokenKind::Eq {
             let _start = parser.current_pos();
             parser.advance();
@@ -403,6 +411,8 @@ pub fn parse_class_expr(parser: &mut Parser) -> ClassExpr {
     } else {
         None
     };
+
+    let _type_params = super::typescript::maybe_parse_ts_type_params(parser);
 
     let super_class = if parser.peek() == TokenKind::Extends {
         parser.advance();

@@ -402,6 +402,11 @@ impl Parser {
                     let name = self.expect_ident();
                     expr = Expr::Member(Box::new(expr), name, Span::new(start, self.prev_end()));
                 }
+                TokenKind::ColonColon => {
+                    self.advance();
+                    let name = self.expect_ident();
+                    expr = Expr::Member(Box::new(expr), name, Span::new(start, self.prev_end()));
+                }
                 TokenKind::Arrow => {
                     self.advance();
                     let name = self.expect_ident();
@@ -473,6 +478,71 @@ impl Parser {
                 let expr = self.parse_expr();
                 self.expect(TokenKind::RParen);
                 Expr::Paren(Box::new(expr), Span::new(start, self.prev_end()))
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let mut captures = Vec::new();
+                while self.peek() != TokenKind::RBracket && self.peek() != TokenKind::Eof {
+                    let pos_before = self.pos;
+                    let by_ref = self.peek() == TokenKind::Ampersand;
+                    if by_ref {
+                        self.advance();
+                    }
+                    let name = if self.peek() == TokenKind::Ident {
+                        Some(self.expect_ident())
+                    } else {
+                        None
+                    };
+                    captures.push(LambdaCapture {
+                        by_ref,
+                        name,
+                        span: Span::new(start, self.prev_end()),
+                    });
+                    if self.peek() == TokenKind::Comma {
+                        self.advance();
+                    }
+                    // Malformed captures such as `[(` must still consume a
+                    // token. Without this guard, the loop grows `captures`
+                    // forever and eventually aborts the process on OOM.
+                    if self.pos == pos_before {
+                        self.advance();
+                    }
+                }
+                self.expect(TokenKind::RBracket);
+                let mut params = Vec::new();
+                if self.peek() == TokenKind::LParen {
+                    self.advance();
+                    while self.peek() != TokenKind::RParen && self.peek() != TokenKind::Eof {
+                        let type_ = self.parse_type();
+                        let name = if self.peek() == TokenKind::Ident {
+                            Some(self.expect_ident())
+                        } else {
+                            None
+                        };
+                        params.push(ParamDecl {
+                            type_: Box::new(type_),
+                            name,
+                            default: None,
+                            span: Span::new(start, self.prev_end()),
+                        });
+                        if self.peek() == TokenKind::Comma {
+                            self.advance();
+                        }
+                    }
+                    self.expect(TokenKind::RParen);
+                }
+                let body = self.parse_block();
+                let span = Span::new(start, self.prev_end());
+                Expr::Lambda(
+                    LambdaExpr {
+                        captures,
+                        params,
+                        return_type: None,
+                        body: Box::new(body),
+                        span,
+                    },
+                    span,
+                )
             }
             TokenKind::LBrace => {
                 self.advance();
@@ -607,7 +677,34 @@ impl Parser {
                 self.advance();
                 "bool".to_string()
             }
-            TokenKind::Ident => self.expect_ident(),
+            TokenKind::Ident => {
+                let mut name = self.expect_ident();
+                while self.peek() == TokenKind::ColonColon && self.peek_ahead(1) == TokenKind::Ident
+                {
+                    self.advance();
+                    name.push_str("::");
+                    name.push_str(&self.expect_ident());
+                }
+                if self.peek() == TokenKind::Lt {
+                    let mut depth = 0usize;
+                    while self.peek() != TokenKind::Eof {
+                        match self.peek() {
+                            TokenKind::Lt => depth += 1,
+                            TokenKind::Gt => {
+                                depth = depth.saturating_sub(1);
+                                self.advance();
+                                if depth == 0 {
+                                    break;
+                                }
+                                continue;
+                            }
+                            _ => {}
+                        }
+                        self.advance();
+                    }
+                }
+                name
+            }
             TokenKind::Struct | TokenKind::Class => {
                 self.advance();
                 let name = self.expect_ident();

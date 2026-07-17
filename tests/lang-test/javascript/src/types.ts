@@ -33,6 +33,9 @@ export class Repository<T extends Identifiable> {
   }
 }
 
-function loggedMethod(_target: unknown, _ctx: unknown) {
-  return _target;
+function loggedMethod<T extends (...args: never[]) => unknown>(
+  target: T,
+  _ctx: ClassMethodDecoratorContext,
+): T {
+  return target;
 }

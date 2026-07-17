@@ -2,7 +2,6 @@
 #include "models/user.h"
 #include "models/product.h"
 #include "utils/math.h"
-#include "utils/strings.h"
 
 int main(void) {
     User* alice = user_new("Alice", "alice@example.com");

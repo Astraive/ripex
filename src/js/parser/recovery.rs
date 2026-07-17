@@ -61,10 +61,20 @@ pub fn expect_semicolon(parser: &mut Parser) {
     if parser.is_eof() || parser.peek() == TokenKind::RBrace {
         return;
     }
+    if parser
+        .previous_token()
+        .is_some_and(|token| token.kind == TokenKind::RBrace)
+    {
+        return;
+    }
     if parser.current_token().has_line_break {
         return;
     }
     let tok = parser.current_token().clone();
-    let err = parser.error(DiagnosticCode::UnexpectedToken, &tok);
+    let err = parser.error_msg(
+        DiagnosticCode::UnexpectedToken,
+        tok.span,
+        format!("expected semicolon before {:?}", tok.kind),
+    );
     parser.errors.push(err);
 }

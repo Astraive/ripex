@@ -15,6 +15,11 @@ pub fn walk_decl(visitor: &mut dyn Visitor, decl: &Decl) {
         Decl::Const(c, _) => visitor.visit_const_decl(c),
         Decl::Type(t, _) => visitor.visit_type_decl(t),
         Decl::Import(i, _) => visitor.visit_import_decl(i),
+        Decl::ImportGroup(imports, _) => {
+            for import in imports {
+                visitor.visit_import_decl(import);
+            }
+        }
         Decl::Package(_, _) => {}
     }
 }

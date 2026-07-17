@@ -200,7 +200,7 @@ impl<'a> Lexer<'a> {
         {
             self.hashbang_scanned = true;
             let start = self.scanner.position();
-            scan_hashbang(&mut self.scanner);
+            self.comments.push(scan_hashbang(&mut self.scanner));
             return self.finish_token(TokenKind::Hashbang, start, "");
         }
         self.hashbang_scanned = true;

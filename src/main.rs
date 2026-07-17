@@ -1,12 +1,14 @@
 //! ripex CLI — parse source files with the hand-written ripex parsers and
 //! emit extracted facts / AST summaries as JSON or human-readable text.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 
 use ripex::{
+    compiler::{check_with_compiler, CheckStatus, CompilerCheckOptions},
     detect_language, parser_for_ext, registry, ExtractionResult, Language, ParseResult, Program,
 };
 
@@ -42,8 +44,106 @@ enum Command {
         #[arg(long)]
         facts: bool,
     },
+    /// Validate a file or project with the language's production compiler/toolchain.
+    Check {
+        /// Source file, project directory, or project manifest to check.
+        path: String,
+        /// Force a language id when it cannot be detected from the path.
+        #[arg(long, short)]
+        lang: Option<String>,
+        /// Search parent directories for a project manifest and check the project.
+        #[arg(long)]
+        project: bool,
+        /// Override the primary compiler or static analyzer executable.
+        #[arg(long)]
+        toolchain: Option<PathBuf>,
+        /// Language standard/target, such as c23, c++23, or ES2022.
+        #[arg(long)]
+        standard: Option<String>,
+        /// Maximum seconds allowed for each compiler stage.
+        #[arg(long, default_value_t = 120)]
+        timeout: u64,
+        /// Append an argument to the compiler invocation; repeat as needed.
+        #[arg(long = "arg", allow_hyphen_values = true)]
+        extra_args: Vec<String>,
+        /// Emit the complete machine-readable compiler report.
+        #[arg(long)]
+        json: bool,
+    },
     /// List the parsers registered in ripex.
     Ls,
+}
+
+struct CheckRequest {
+    path: String,
+    lang: Option<String>,
+    project: bool,
+    toolchain: Option<PathBuf>,
+    standard: Option<String>,
+    timeout: u64,
+    extra_args: Vec<String>,
+    json: bool,
+}
+
+fn run_check(request: CheckRequest) -> anyhow::Result<()> {
+    let language = request
+        .lang
+        .as_deref()
+        .map(|id| Language::from_id(id).ok_or_else(|| anyhow::anyhow!("unknown language: {id}")))
+        .transpose()?;
+    let options = CompilerCheckOptions {
+        toolchain: request.toolchain,
+        standard: request.standard,
+        project: request.project,
+        extra_args: request.extra_args,
+        timeout: Duration::from_secs(request.timeout),
+    };
+    let report = check_with_compiler(&request.path, language, &options)
+        .with_context(|| format!("could not compiler-check {}", request.path))?;
+
+    if request.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&CompilerJsonOutput {
+                schema_version: 1,
+                report: &report,
+            })?
+        );
+    } else {
+        println!("language: {}", report.language.id());
+        println!("path:     {}", report.path.display());
+        println!("status:   {:?}", report.status);
+        for stage in &report.stages {
+            println!("\n[{:?}] {}: {:?}", stage.kind, stage.backend, stage.status);
+            println!("  command: {}", stage.command.join(" "));
+            if let Some(code) = stage.exit_code {
+                println!("  exit:    {code}");
+            }
+            for diagnostic in &stage.diagnostics {
+                println!("  - {}", diagnostic.raw);
+            }
+            if stage.diagnostics.is_empty() {
+                for line in stage.stdout.lines().chain(stage.stderr.lines()) {
+                    println!("  | {line}");
+                }
+            }
+        }
+    }
+
+    match report.status {
+        CheckStatus::Passed => Ok(()),
+        CheckStatus::Failed => std::process::exit(1),
+        CheckStatus::Unavailable | CheckStatus::InvocationError | CheckStatus::TimedOut => {
+            std::process::exit(2)
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct CompilerJsonOutput<'a> {
+    schema_version: u32,
+    #[serde(flatten)]
+    report: &'a ripex::compiler::CompilerCheckReport,
 }
 
 fn run_parse(
@@ -86,6 +186,7 @@ fn run_parse(
             language: language.id(),
             file,
             errors: &result.errors,
+            comments: &result.comments,
             ast: if ast {
                 Some(ast_summary(&result))
             } else {
@@ -193,6 +294,7 @@ struct JsonOutput<'a> {
     language: &'a str,
     file: &'a str,
     errors: &'a [ripex::diagnostics::ParseError],
+    comments: &'a [ripex::ParsedComment],
     #[serde(skip_serializing_if = "Option::is_none")]
     ast: Option<AstSummary>,
     facts: &'a ExtractionResult,
@@ -283,6 +385,25 @@ fn run() -> anyhow::Result<()> {
             ast,
             facts,
         } => run_parse(&file, lang.as_deref(), json, ast, facts),
+        Command::Check {
+            path,
+            lang,
+            project,
+            toolchain,
+            standard,
+            timeout,
+            extra_args,
+            json,
+        } => run_check(CheckRequest {
+            path,
+            lang,
+            project,
+            toolchain,
+            standard,
+            timeout,
+            extra_args,
+            json,
+        }),
         Command::Ls => run_ls(),
     };
     if let Err(e) = res {

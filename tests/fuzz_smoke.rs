@@ -12,6 +12,7 @@ const SEEDS: &[&str] = &[
     "()",
     "{}",
     "[]",
+    "[(",
     "/* comment */",
     "// line comment",
     "x + y",

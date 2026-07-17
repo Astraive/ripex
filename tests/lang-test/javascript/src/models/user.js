@@ -1,18 +1,16 @@
 // ripex-lang-test: JS class model — decorators, static block, methods, getters/setters.
-function logged(target, context) {
-  return target;
-}
-
 export class User {
   #password = '';
 
-  @logged
+  static INSTANCE_COUNT = 0;
+
   static ROLE = 'user';
 
   static {
     User.INSTANCE_COUNT = 0;
   }
 
+  /** @param {string} name @param {string} email @param {string} role */
   constructor(name, email, role = 'user') {
     this.name = name;
     this.email = email;
@@ -37,6 +35,7 @@ export class User {
 }
 
 export class AdminUser extends User {
+  /** @param {string} name @param {string} email */
   constructor(name, email) {
     super(name, email, 'admin');
   }

@@ -1,0 +1,27 @@
+[
+  {
+    "directory": ".",
+    "file": "main.c",
+    "arguments": ["gcc", "-std=c17", "-pedantic-errors", "-I.", "-c", "main.c", "-o", "main.o"]
+  },
+  {
+    "directory": ".",
+    "file": "models/product.c",
+    "arguments": ["gcc", "-std=c17", "-pedantic-errors", "-I.", "-c", "models/product.c", "-o", "models/product.o"]
+  },
+  {
+    "directory": ".",
+    "file": "models/user.c",
+    "arguments": ["gcc", "-std=c17", "-pedantic-errors", "-I.", "-c", "models/user.c", "-o", "models/user.o"]
+  },
+  {
+    "directory": ".",
+    "file": "services/service.c",
+    "arguments": ["gcc", "-std=c17", "-pedantic-errors", "-I.", "-c", "services/service.c", "-o", "services/service.o"]
+  },
+  {
+    "directory": ".",
+    "file": "utils/math.c",
+    "arguments": ["gcc", "-std=c17", "-pedantic-errors", "-I.", "-c", "utils/math.c", "-o", "utils/math.o"]
+  }
+]

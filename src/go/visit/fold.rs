@@ -143,6 +143,7 @@ pub fn fold_decl(folder: &mut dyn Fold, decl: Decl) -> Decl {
         Decl::Const(c, span) => Decl::Const(c, span),
         Decl::Type(t, span) => Decl::Type(t, span),
         Decl::Import(i, span) => Decl::Import(i, span),
+        Decl::ImportGroup(imports, span) => Decl::ImportGroup(imports, span),
         Decl::Package(n, span) => Decl::Package(n, span),
     }
 }

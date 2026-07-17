@@ -5,6 +5,12 @@ export const Category = {
 };
 
 export class Product {
+  /**
+   * @param {number} id
+   * @param {string} name
+   * @param {number} price
+   * @param {string} category
+   */
   constructor(id, name, price, category) {
     this.id = id;
     this.name = name;
@@ -16,6 +22,7 @@ export class Product {
     return `${this.name} (${this.category})`;
   }
 
+  /** @param {number} rate */
   calculateTax(rate = 0.1) {
     return this.price * rate;
   }

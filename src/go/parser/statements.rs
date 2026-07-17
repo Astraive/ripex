@@ -92,17 +92,33 @@ impl Parser {
                 Stmt::Send(Expr::Ident(String::new(), Span::ZERO), val, Span::ZERO)
             }
             _ => {
-                let expr = self.parse_expr();
+                let first = self.parse_expr();
+                let mut left = vec![first];
+                while self.peek() == TokenKind::Comma {
+                    self.advance();
+                    left.push(self.parse_expr());
+                }
                 if self.peek() == TokenKind::Define {
                     // Short variable declaration
                     self.advance();
-                    let val = self.parse_expr();
+                    let mut values = vec![self.parse_expr()];
+                    while self.peek() == TokenKind::Comma {
+                        self.advance();
+                        values.push(self.parse_expr());
+                    }
                     self.expect_semicolon();
-                    Stmt::Assign(
-                        vec![expr.clone()],
-                        vec![val],
-                        Span::new(expr.span().start, self.prev_end()),
+                    Stmt::Define(
+                        left.clone(),
+                        values,
+                        Span::new(left[0].span().start, self.prev_end()),
                     )
+                } else if self.peek() == TokenKind::Arrow {
+                    self.advance();
+                    let value = self.parse_expr();
+                    self.expect_semicolon();
+                    let channel = left.remove(0);
+                    let span = Span::new(channel.span().start, self.prev_end());
+                    Stmt::Send(channel, value, span)
                 } else if self.peek() == TokenKind::Eq
                     || self.peek() == TokenKind::PlusEq
                     || self.peek() == TokenKind::MinusEq
@@ -116,16 +132,21 @@ impl Parser {
                     || self.peek() == TokenKind::GtGtEq
                 {
                     self.advance();
-                    let val = self.parse_expr();
+                    let mut values = vec![self.parse_expr()];
+                    while self.peek() == TokenKind::Comma {
+                        self.advance();
+                        values.push(self.parse_expr());
+                    }
                     self.expect_semicolon();
                     Stmt::Assign(
-                        vec![expr.clone()],
-                        vec![val],
-                        Span::new(expr.span().start, self.prev_end()),
+                        left.clone(),
+                        values,
+                        Span::new(left[0].span().start, self.prev_end()),
                     )
                 } else {
                     self.expect_semicolon();
-                    Stmt::Expr(expr.clone(), expr.span())
+                    let first = left.remove(0);
+                    Stmt::Expr(first.clone(), first.span())
                 }
             }
         };
@@ -336,7 +357,7 @@ impl Parser {
                     continue;
                 }
                 let alias =
-                    if self.peek() == TokenKind::Ident && self.peek_ahead(1) == TokenKind::String {
+                    if self.peek() == TokenKind::Ident && is_string_literal(self.peek_ahead(1)) {
                         Some(self.expect_ident())
                     } else {
                         None
@@ -353,12 +374,12 @@ impl Parser {
             }
             self.expect(TokenKind::RParen);
         } else {
-            let alias =
-                if self.peek() == TokenKind::Ident && self.peek_ahead(1) == TokenKind::String {
-                    Some(self.expect_ident())
-                } else {
-                    None
-                };
+            let alias = if self.peek() == TokenKind::Ident && is_string_literal(self.peek_ahead(1))
+            {
+                Some(self.expect_ident())
+            } else {
+                None
+            };
             let path = self.advance().value.clone();
             imports.push(ImportDecl {
                 path,
@@ -366,17 +387,13 @@ impl Parser {
                 span: Span::new(start, self.prev_end()),
             });
         }
-        Stmt::Decl(
-            Decl::Import(
-                ImportDecl {
-                    path: String::new(),
-                    alias: None,
-                    span: Span::ZERO,
-                },
-                Span::new(start, self.prev_end()),
-            ),
-            Span::new(start, self.prev_end()),
-        )
+        let span = Span::new(start, self.prev_end());
+        let decl = if imports.len() == 1 {
+            Decl::Import(imports.remove(0), span)
+        } else {
+            Decl::ImportGroup(imports, span)
+        };
+        Stmt::Decl(decl, span)
     }
 
     fn parse_package(&mut self) -> Stmt {
@@ -392,7 +409,7 @@ impl Parser {
         if parenthesized {
             self.advance();
         }
-        let cond = self.parse_expr();
+        let cond = self.parse_expr_without_composite_literal();
         if parenthesized {
             self.expect(TokenKind::RParen);
         }
@@ -411,7 +428,7 @@ impl Parser {
         let start = tok.span.start;
         if self.peek() == TokenKind::Range {
             self.advance();
-            let val = self.parse_expr();
+            let val = self.parse_expr_without_composite_literal();
             let body = Box::new(self.parse_stmt());
             return Stmt::ForRange(
                 val,
@@ -434,7 +451,7 @@ impl Parser {
             if self.peek() == TokenKind::Define && self.peek_ahead(1) == TokenKind::Range {
                 self.advance();
                 self.advance();
-                let val = self.parse_expr();
+                let val = self.parse_expr_without_composite_literal();
                 let body = Box::new(self.parse_stmt());
                 return Stmt::ForRange(val, first, second, body, Span::new(start, self.prev_end()));
             }
@@ -582,6 +599,10 @@ impl Parser {
         self.expect(TokenKind::RBrace);
         Stmt::Select(cases, Span::new(start, self.prev_end()))
     }
+}
+
+fn is_string_literal(kind: TokenKind) -> bool {
+    matches!(kind, TokenKind::InterpretedString | TokenKind::RawString)
 }
 
 fn is_type_start(kind: TokenKind) -> bool {

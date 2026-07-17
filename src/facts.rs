@@ -1,5 +1,22 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum CommentKind {
+    Line,
+    Block,
+    Hashbang,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ParsedComment {
+    pub kind: CommentKind,
+    pub text: String,
+    pub span: crate::span::Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum Visibility {
     Public,
@@ -49,6 +66,7 @@ pub enum ImportKind {
     ReExport,
     TypeImport,
     TypeReExport,
+    DynamicImport,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -416,6 +434,14 @@ impl CallBuilder {
     }
     pub fn await_(mut self, v: bool) -> Self {
         self.inner.is_await = v;
+        self
+    }
+    pub fn optional(mut self, v: bool) -> Self {
+        self.inner.is_optional = v;
+        self
+    }
+    pub fn type_args(mut self, args: Vec<TypeKind>) -> Self {
+        self.inner.type_args = args;
         self
     }
     pub fn build(self) -> ParsedCall {

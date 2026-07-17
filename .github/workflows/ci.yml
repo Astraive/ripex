@@ -94,6 +94,50 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo check --no-default-features --lib
 
+  compiler-conformance:
+    name: Compiler conformance corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install language analyzers
+        run: |
+          npm ci --prefix tests/lang-test/javascript
+          python -m pip install mypy
+
+      - name: Build ripex
+        run: cargo build --all-features
+
+      - name: Check C17 corpus
+        run: target/debug/ripex check tests/lang-test/c --lang c
+      - name: Check C++20 corpus
+        run: target/debug/ripex check tests/lang-test/cpp --lang cpp
+      - name: Check C# project
+        run: target/debug/ripex check tests/lang-test/csharp
+      - name: Check Go project
+        run: target/debug/ripex check tests/lang-test/go
+      - name: Check JavaScript project
+        run: target/debug/ripex check tests/lang-test/javascript/src --lang javascript
+      - name: Check TypeScript project
+        run: target/debug/ripex check tests/lang-test/javascript/tsconfig.json
+      - name: Check strict Python project
+        run: target/debug/ripex check tests/lang-test/python/src --lang python
+      - name: Check Rust project
+        run: target/debug/ripex check tests/lang-test/rust
+
   fuzz:
     name: Fuzz (crash / hang hunting)
     runs-on: ubuntu-latest

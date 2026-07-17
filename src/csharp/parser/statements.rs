@@ -4,6 +4,43 @@ use super::state::Parser;
 use crate::span::Span;
 
 impl Parser {
+    fn parse_qualified_name(&mut self) -> String {
+        let mut name = self.expect_ident();
+        while self.peek() == TokenKind::Dot {
+            self.advance();
+            name.push('.');
+            name.push_str(&self.expect_ident());
+        }
+        name
+    }
+
+    fn skip_angle_group(&mut self) {
+        let mut depth = 0usize;
+        while self.peek() != TokenKind::Eof {
+            match self.peek() {
+                TokenKind::Lt => depth += 1,
+                TokenKind::Gt => {
+                    depth = depth.saturating_sub(1);
+                    self.advance();
+                    if depth == 0 {
+                        break;
+                    }
+                    continue;
+                }
+                TokenKind::GtGt => {
+                    depth = depth.saturating_sub(2);
+                    self.advance();
+                    if depth == 0 {
+                        break;
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+            self.advance();
+        }
+    }
+
     pub fn parse_stmt(&mut self) -> Stmt {
         if self.bump_recursion().is_err() {
             return Stmt::Empty(Span::ZERO);
@@ -155,7 +192,23 @@ impl Parser {
             // Visibility modifiers
             TokenKind::Public | TokenKind::Private | TokenKind::Protected | TokenKind::Internal => {
                 let vis = self.parse_visibility();
-                self.parse_member_decl(vis)
+                if matches!(
+                    self.peek(),
+                    TokenKind::Class
+                        | TokenKind::Struct
+                        | TokenKind::Record
+                        | TokenKind::Interface
+                        | TokenKind::Enum
+                ) {
+                    let decl = if self.peek() == TokenKind::Enum {
+                        self.parse_enum_decl()
+                    } else {
+                        self.parse_type_decl()
+                    };
+                    Stmt::Decl(decl, self.peek_token().span)
+                } else {
+                    self.parse_member_decl(vis)
+                }
             }
             // Member declarations
             TokenKind::Static
@@ -187,6 +240,10 @@ impl Parser {
             | TokenKind::Object
             | TokenKind::Var
             | TokenKind::Void => {
+                if self.peek_ahead(1) == TokenKind::Ident && self.peek_ahead(2) == TokenKind::LParen
+                {
+                    return self.parse_member_decl(Visibility::None);
+                }
                 if let Some((stmts, span)) = self.try_parse_local_decl() {
                     return Self::wrap_local_decls(stmts, span);
                 }
@@ -428,16 +485,48 @@ impl Parser {
             }
         }
 
+        if matches!(
+            self.peek(),
+            TokenKind::Class | TokenKind::Struct | TokenKind::Record | TokenKind::Interface
+        ) {
+            let decl = self.parse_type_decl();
+            return Stmt::Decl(decl, Span::new(start, self.prev_end()));
+        }
+
         let return_type = self.parse_type();
-        let name = self.expect_ident();
+        let name = if self.peek() == TokenKind::Ident {
+            self.expect_ident()
+        } else {
+            "__ctor".to_string()
+        };
+
+        if self.peek() == TokenKind::Lt {
+            self.skip_angle_group();
+        }
 
         if self.peek() == TokenKind::LParen {
             // Method
             self.advance();
             let mut params = Vec::new();
             while self.peek() != TokenKind::RParen && self.peek() != TokenKind::Eof {
+                while matches!(
+                    self.peek(),
+                    TokenKind::Ref
+                        | TokenKind::Out
+                        | TokenKind::In
+                        | TokenKind::Params
+                        | TokenKind::This
+                ) {
+                    self.advance();
+                }
                 let ptype = self.parse_type();
                 let pname = self.expect_ident();
+                let default = if self.peek() == TokenKind::Eq {
+                    self.advance();
+                    Some(Box::new(self.parse_expr()))
+                } else {
+                    None
+                };
                 params.push(ParamDecl {
                     type_: Box::new(ptype),
                     name: pname,
@@ -446,7 +535,7 @@ impl Parser {
                     is_in: false,
                     is_params: false,
                     is_this: false,
-                    default: None,
+                    default,
                     span: self.peek_token().span,
                 });
                 if self.peek() == TokenKind::Comma {
@@ -454,6 +543,22 @@ impl Parser {
                 }
             }
             self.expect(TokenKind::RParen);
+            if self.peek() == TokenKind::Colon {
+                while !matches!(
+                    self.peek(),
+                    TokenKind::LBrace | TokenKind::FatArrow | TokenKind::Eof
+                ) {
+                    self.advance();
+                }
+            }
+            if self.peek() == TokenKind::Where {
+                while !matches!(
+                    self.peek(),
+                    TokenKind::LBrace | TokenKind::FatArrow | TokenKind::Eof
+                ) {
+                    self.advance();
+                }
+            }
             let body = if self.peek() == TokenKind::LBrace {
                 Some(self.parse_block())
             } else if self.peek() == TokenKind::FatArrow {
@@ -506,6 +611,11 @@ impl Parser {
                     None
                 };
                 self.expect(TokenKind::RBrace);
+                if self.peek() == TokenKind::Eq {
+                    self.advance();
+                    let _init = self.parse_expr();
+                    self.expect(TokenKind::Semicolon);
+                }
                 Stmt::Decl(
                     Decl::Property(
                         PropertyDecl {
@@ -619,7 +729,7 @@ impl Parser {
     fn parse_namespace_decl(&mut self) -> Decl {
         let start = self.peek_token().span.start;
         self.advance();
-        let name = self.expect_ident();
+        let name = self.parse_qualified_name();
         self.expect(TokenKind::LBrace);
         let mut members = Vec::new();
         while self.peek() != TokenKind::RBrace && self.peek() != TokenKind::Eof {
@@ -653,8 +763,26 @@ impl Parser {
             }
             self.expect(TokenKind::Gt);
         }
+        if self.peek() == TokenKind::LParen {
+            let mut depth = 0usize;
+            while self.peek() != TokenKind::Eof {
+                match self.peek() {
+                    TokenKind::LParen => depth += 1,
+                    TokenKind::RParen => {
+                        depth = depth.saturating_sub(1);
+                        self.advance();
+                        if depth == 0 {
+                            break;
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+                self.advance();
+            }
+        }
         match kind {
-            TokenKind::Class => {
+            TokenKind::Class | TokenKind::Record => {
                 let mut interfaces = Vec::new();
                 if self.peek() == TokenKind::Colon {
                     self.advance();
@@ -866,7 +994,7 @@ impl Parser {
 
     fn parse_namespace_or_using(&mut self) -> Decl {
         let start = self.peek_token().span.start;
-        let name = self.expect_ident();
+        let name = self.parse_qualified_name();
         self.expect(TokenKind::Semicolon);
         Decl::Using(
             UsingDecl {

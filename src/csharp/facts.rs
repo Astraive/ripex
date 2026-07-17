@@ -754,10 +754,7 @@ fn walk_variables(decls: &[Decl], variables: &mut Vec<ParsedVariable>) {
                 let inner = get_members(decl);
                 walk_variables(inner, variables);
             }
-            // Method-like decls: emit parameters as variables. Previously
-            // parameters inside methods were silently dropped. (Note: C#
-            // local-variable statements are not yet represented in the AST,
-            // so locals cannot be extracted here — a parser-side gap.)
+            // Method-like declarations contribute parameters and body locals.
             Decl::Method(_, span) | Decl::Constructor(_, span) | Decl::Operator(_, span) => {
                 let params = match decl {
                     Decl::Method(fd, _) => &fd.params,

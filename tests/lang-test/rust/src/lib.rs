@@ -3,11 +3,11 @@ pub mod models;
 pub mod utils;
 pub mod services;
 
-pub use models::user::User;
+pub use models::user::{Describe, User};
 pub use models::product::Product;
 
 pub fn run_demo() {
-    let alice = User::new("Alice", "alice@example.com");
+    let mut alice = User::new("Alice", "alice@example.com");
     alice.roles.push("admin".to_string());
     println!("{}", alice.describe());
     println!("admin? {}", alice.is_admin());

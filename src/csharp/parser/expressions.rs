@@ -16,6 +16,10 @@ impl Parser {
     fn parse_assignment(&mut self) -> Expr {
         let start = self.peek_token().span.start;
         let left = self.parse_ternary();
+        if self.peek() == TokenKind::FatArrow {
+            self.advance();
+            return self.parse_assignment();
+        }
         if matches!(
             self.peek(),
             TokenKind::Eq
@@ -400,7 +404,7 @@ impl Parser {
                 let tok = self.advance();
                 Expr::Null(tok.span)
             }
-            TokenKind::Ident | TokenKind::Var => {
+            TokenKind::Ident | TokenKind::Var | TokenKind::This | TokenKind::Base => {
                 let tok = self.advance();
                 Expr::Ident(tok.value.clone(), tok.span)
             }
@@ -465,7 +469,18 @@ impl Parser {
 
     fn parse_new_expr(&mut self, start: Pos) -> Expr {
         self.advance();
-        let type_ = self.parse_type();
+        let type_ = if self.peek() == TokenKind::LBracket {
+            self.advance();
+            self.expect(TokenKind::RBracket);
+            Expr::Ident("implicit[]".to_string(), Span::new(start, self.prev_end()))
+        } else if self.peek() == TokenKind::LParen {
+            Expr::Ident(
+                "target-typed".to_string(),
+                Span::new(start, self.prev_end()),
+            )
+        } else {
+            self.parse_type()
+        };
         let mut args = Vec::new();
         if self.peek() == TokenKind::LParen {
             self.advance();
@@ -476,6 +491,16 @@ impl Parser {
                 }
             }
             self.expect(TokenKind::RParen);
+        }
+        if self.peek() == TokenKind::LBrace {
+            self.advance();
+            while self.peek() != TokenKind::RBrace && self.peek() != TokenKind::Eof {
+                args.push(self.parse_expr());
+                if self.peek() == TokenKind::Comma {
+                    self.advance();
+                }
+            }
+            self.expect(TokenKind::RBrace);
         }
         Expr::New(Box::new(type_), args, Span::new(start, self.prev_end()))
     }
@@ -565,29 +590,95 @@ impl Parser {
                 tok.value.clone()
             }
         };
-        let mut typ = Expr::Ident(name, Span::new(start, self.prev_end()));
+        let mut full_name = name;
+        if self.peek() == TokenKind::Lt {
+            let mut depth = 0usize;
+            while self.peek() != TokenKind::Eof {
+                let token = self.advance();
+                match token.kind {
+                    TokenKind::Lt => {
+                        depth += 1;
+                        full_name.push('<');
+                    }
+                    TokenKind::Gt => {
+                        depth = depth.saturating_sub(1);
+                        full_name.push('>');
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    TokenKind::GtGt => {
+                        depth = depth.saturating_sub(2);
+                        full_name.push_str(">>");
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    TokenKind::Comma => full_name.push_str(", "),
+                    TokenKind::Dot => full_name.push('.'),
+                    _ => full_name.push_str(&type_token_text(&token)),
+                }
+            }
+        }
+        let mut typ = Expr::Ident(full_name, Span::new(start, self.prev_end()));
         while self.peek() == TokenKind::LBracket {
             self.advance();
-            if self.peek() == TokenKind::Comma {
+            let mut commas = 0usize;
+            while self.peek() == TokenKind::Comma {
+                commas += 1;
                 self.advance();
-                let mut _rank = 1;
-                while self.peek() == TokenKind::Comma {
-                    _rank += 1;
-                    self.advance();
-                }
-                self.expect(TokenKind::RBracket);
-                typ = Expr::Ident(format!("{},{}", "", ""), Span::new(start, self.prev_end()));
-            } else {
-                self.expect(TokenKind::RBracket);
-                typ = Expr::Ident(format!("{}[]", ""), Span::new(start, self.prev_end()));
             }
+            self.expect(TokenKind::RBracket);
+            let base = expr_type_name(&typ);
+            typ = Expr::Ident(
+                format!("{base}[{}]", ",".repeat(commas)),
+                Span::new(start, self.prev_end()),
+            );
         }
         if self.peek() == TokenKind::Nullable {
             self.advance();
-            typ = Expr::Ident(format!("{}?", ""), Span::new(start, self.prev_end()));
+            typ = Expr::Ident(
+                format!("{}?", expr_type_name(&typ)),
+                Span::new(start, self.prev_end()),
+            );
         }
         typ
     }
+}
+
+fn expr_type_name(expr: &Expr) -> &str {
+    match expr {
+        Expr::Ident(name, _) => name,
+        _ => "object",
+    }
+}
+
+fn type_token_text(token: &super::super::lexer::Token) -> String {
+    if !token.value.is_empty() {
+        return token.value.clone();
+    }
+    match token.kind {
+        TokenKind::Int => "int",
+        TokenKind::String => "string",
+        TokenKind::Bool => "bool",
+        TokenKind::Double => "double",
+        TokenKind::Float => "float",
+        TokenKind::Char => "char",
+        TokenKind::Byte => "byte",
+        TokenKind::Short => "short",
+        TokenKind::Long => "long",
+        TokenKind::Uint => "uint",
+        TokenKind::Ushort => "ushort",
+        TokenKind::Ulong => "ulong",
+        TokenKind::Sbyte => "sbyte",
+        TokenKind::Decimal => "decimal",
+        TokenKind::Object => "object",
+        TokenKind::Void => "void",
+        TokenKind::Nint => "nint",
+        TokenKind::Nuint => "nuint",
+        _ => "object",
+    }
+    .to_string()
 }
 
 impl Expr {

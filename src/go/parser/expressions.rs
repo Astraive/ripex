@@ -13,6 +13,14 @@ impl Parser {
         result
     }
 
+    pub(super) fn parse_expr_without_composite_literal(&mut self) -> Expr {
+        let previous = self.allow_composite_literal;
+        self.allow_composite_literal = false;
+        let expr = self.parse_expr();
+        self.allow_composite_literal = previous;
+        expr
+    }
+
     fn parse_binary(&mut self, min_prec: u8) -> Expr {
         let mut left = self.parse_unary();
         loop {
@@ -229,7 +237,7 @@ impl Parser {
                         Span::new(expr.span().start, tok.span.end),
                     );
                 }
-                TokenKind::LBrace => {
+                TokenKind::LBrace if self.allow_composite_literal => {
                     // Composite literal
                     expr = self.parse_composite_lit(expr);
                 }
@@ -396,7 +404,10 @@ impl Parser {
                     size.as_ref().map_or(elem.span().start, |_| self.prev_end()),
                     elem.span().end,
                 );
-                Expr::Ident(format!("[{}]{}", size.unwrap_or_default(), ""), span)
+                Expr::Ident(
+                    format!("[{}]{}", size.unwrap_or_default(), type_name(&elem)),
+                    span,
+                )
             }
             TokenKind::Map => {
                 self.advance();
@@ -405,7 +416,7 @@ impl Parser {
                 self.expect(TokenKind::RBracket);
                 let val = self.parse_type();
                 Expr::Ident(
-                    format!("map[{}]", ""),
+                    format!("map[{}]{}", type_name(&key), type_name(&val)),
                     Span::new(key.span().start, val.span().end),
                 )
             }
@@ -418,7 +429,7 @@ impl Parser {
                     "chan"
                 };
                 let inner = self.parse_type();
-                Expr::Ident(format!("{} {}", dir, ""), inner.span())
+                Expr::Ident(format!("{} {}", dir, type_name(&inner)), inner.span())
             }
             TokenKind::Func => {
                 self.advance();
@@ -438,7 +449,21 @@ impl Parser {
                 {
                     returns.push(Box::new(self.parse_type()));
                 }
-                Expr::Ident("func".to_string(), Span::new(start, self.prev_end()))
+                let params = params
+                    .iter()
+                    .map(|(_, ty)| type_name(ty))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let returns = returns.iter().map(|ty| type_name(ty)).collect::<Vec<_>>();
+                let result = match returns.as_slice() {
+                    [] => String::new(),
+                    [single] => format!(" {single}"),
+                    many => format!(" ({})", many.join(", ")),
+                };
+                Expr::Ident(
+                    format!("func({params}){result}"),
+                    Span::new(start, self.prev_end()),
+                )
             }
             TokenKind::Interface => {
                 self.advance();
@@ -474,8 +499,11 @@ impl Parser {
             }
             TokenKind::DotDotDot => {
                 self.advance();
-
-                self.parse_type()
+                let inner = self.parse_type();
+                Expr::Ident(
+                    format!("...{}", type_name(&inner)),
+                    Span::new(start, inner.span().end),
+                )
             }
             _ => {
                 let tok = self.advance();
@@ -535,6 +563,16 @@ impl Parser {
             stmts,
             span: Span::new(start, end),
         }
+    }
+}
+
+fn type_name(expr: &Expr) -> String {
+    match expr {
+        Expr::Ident(name, _) => name.clone(),
+        Expr::Selector(object, field, _) => format!("{}.{}", type_name(object), field),
+        Expr::Unary(UnaryOp::Deref, inner, _) => format!("*{}", type_name(inner)),
+        Expr::Paren(inner, _) => format!("({})", type_name(inner)),
+        _ => "any".to_string(),
     }
 }
 

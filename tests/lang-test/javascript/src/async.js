@@ -1,10 +1,13 @@
 // ripex-lang-test: JS async + top-level await + re-export namespace (gap feature).
+/** @param {number} w @param {number} h */
 export async function calculateArea(w, h) {
+  /** @param {number} ms */
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(0);
   return w * h;
 }
 
+/** @param {string} text @returns {Promise<unknown>} */
 export async function safeJsonParse(text) {
   try {
     return JSON.parse(text);

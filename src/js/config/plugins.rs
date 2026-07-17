@@ -21,6 +21,7 @@ impl ParserPlugins {
     pub fn all_js() -> Self {
         ParserPlugins {
             jsx: true,
+            import_attributes: true,
             ..Default::default()
         }
     }
@@ -30,7 +31,7 @@ impl ParserPlugins {
             jsx: true,
             typescript: true,
             decorators: true,
-            ..Default::default()
+            import_attributes: true,
         }
     }
 
@@ -38,6 +39,7 @@ impl ParserPlugins {
         ParserPlugins {
             typescript: true,
             decorators: true,
+            import_attributes: true,
             ..Default::default()
         }
     }

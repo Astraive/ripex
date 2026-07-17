@@ -1,9 +1,10 @@
 // ripex-lang-test: TSX fixtures — JSX, components, fragments, generics.
-import { User } from './models/user.js';
+import { Status } from './types.js';
 
 export interface Props {
   title: string;
   count?: number;
+  status?: Status;
 }
 
 export function Header({ title, count = 0 }: Props) {
@@ -18,6 +19,6 @@ export function Header({ title, count = 0 }: Props) {
 export const App = (props: Props) => (
   <>
     <Header title={props.title} />
-    <User name="Alice" email="a@b.com" />
+    <article data-email="a@b.com">Alice</article>
   </>
 );

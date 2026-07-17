@@ -498,13 +498,33 @@ impl<'a> Lexer<'a> {
     fn read_interpolated_string(&mut self, start: Pos) -> Token {
         self.scanner.advance();
         self.scanner.advance();
+        let mut brace_depth = 0usize;
         while let Some(ch) = self.scanner.peek() {
-            if ch == '"' {
+            if ch == '"' && brace_depth == 0 {
                 self.scanner.advance();
                 break;
             }
             if ch == '{' {
-                break;
+                brace_depth += 1;
+                self.scanner.advance();
+                continue;
+            }
+            if ch == '}' && brace_depth > 0 {
+                brace_depth -= 1;
+                self.scanner.advance();
+                continue;
+            }
+            if ch == '"' && brace_depth > 0 {
+                self.scanner.advance();
+                while let Some(inner) = self.scanner.peek() {
+                    self.scanner.advance();
+                    if inner == '\\' {
+                        self.scanner.advance();
+                    } else if inner == '"' {
+                        break;
+                    }
+                }
+                continue;
             }
             if ch == '\\' {
                 self.scanner.advance();

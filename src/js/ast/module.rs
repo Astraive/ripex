@@ -25,6 +25,8 @@ pub struct ImportDecl {
     pub span: Span,
     pub specifiers: Vec<ImportSpecifier>,
     pub source: StrLit,
+    /// `import type ...` applies to every specifier in this declaration.
+    pub is_type_only: bool,
     pub assertions: Vec<ImportAttribute>,
 }
 
@@ -59,6 +61,8 @@ pub struct ImportNamed {
     pub span: Span,
     pub imported: Ident,
     pub local: Ident,
+    /// `import { type Foo } from "..."` is type-only for this specifier.
+    pub is_type_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +84,8 @@ pub struct ExportNamed {
     pub specifiers: Vec<ExportSpecifier>,
     pub source: Option<StrLit>,
     pub decl: Option<Box<Decl>>,
+    /// `export type { Foo } from "..."` applies to every specifier.
+    pub is_type_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +93,8 @@ pub struct ExportSpecifier {
     pub span: Span,
     pub local: Ident,
     pub exported: Ident,
+    /// `export { type Foo } from "..."` is type-only for this specifier.
+    pub is_type_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +108,8 @@ pub struct ExportDefault {
 pub struct ExportAll {
     pub span: Span,
     pub source: StrLit,
+    /// `export type * from "..."` is a type-only re-export.
+    pub is_type_only: bool,
 }
 
 impl AstNode for Module {

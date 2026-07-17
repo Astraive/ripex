@@ -1,8 +1,8 @@
 use super::ast::ImportSpecifier as AstImportSpecifier;
 use super::ast::VarKind as AstVarKind;
 use super::ast::{
-    ClassMember, Decl, ExportDecl, Expr, ExprRef, ForInit, ImportDecl, Lit, ModuleItem, Pat,
-    Program, PropName, Stmt, TypeAnn,
+    BindingIdent, ClassMember, Decl, ExportDecl, Expr, ExprRef, ForInit, ImportDecl, Lit,
+    ModuleItem, ObjectPatProp, Pat, Program, PropName, Stmt, TypeAnn,
 };
 use super::parser::expressions::HasSpan;
 use crate::arena::Arena;
@@ -11,6 +11,7 @@ use crate::facts::{
     ParsedSymbol, ParsedVariable, SymbolKind, TypeKind, VarKind,
 };
 use crate::ExtractionResult;
+use std::collections::HashSet;
 
 fn expr_name(expr_ref: ExprRef, arena: &Arena<Expr>) -> Option<String> {
     match &arena[expr_ref] {
@@ -29,7 +30,10 @@ fn expr_name(expr_ref: ExprRef, arena: &Arena<Expr>) -> Option<String> {
         }
         Expr::PrivateName(p) => Some(p.name.name.clone()),
         Expr::TSAs(e) => expr_name(e.expr, arena),
+        Expr::TSSatisfies(e) => expr_name(e.expr, arena),
+        Expr::TSTypeAssertion(e) => expr_name(e.expr, arena),
         Expr::TSNonNull(e) => expr_name(e.expr, arena),
+        Expr::TSInst(e) => expr_name(e.expr, arena),
         Expr::Parenthesized(e) => expr_name(e.expr, arena),
         Expr::Chain(e) => expr_name(e.expr, arena),
         _ => None,
@@ -68,6 +72,23 @@ fn resolve_callee(callee: ExprRef, arena: &Arena<Expr>) -> (CallKind, String) {
             };
             (CallKind::MethodCall, callee_text)
         }
+        Expr::OptionalMember(m) => {
+            let obj = expr_name(m.object, arena).unwrap_or_default();
+            let prop = member_prop_name(&m.property, arena).unwrap_or_default();
+            let callee_text = if obj.is_empty() {
+                prop.clone()
+            } else {
+                format!("{}.{}", obj, prop)
+            };
+            (CallKind::MethodCall, callee_text)
+        }
+        Expr::TSAs(e) => resolve_callee(e.expr, arena),
+        Expr::TSSatisfies(e) => resolve_callee(e.expr, arena),
+        Expr::TSTypeAssertion(e) => resolve_callee(e.expr, arena),
+        Expr::TSNonNull(e) => resolve_callee(e.expr, arena),
+        Expr::TSInst(e) => resolve_callee(e.expr, arena),
+        Expr::Parenthesized(e) => resolve_callee(e.expr, arena),
+        Expr::Chain(e) => resolve_callee(e.expr, arena),
         _ => (CallKind::FunctionCall, "unknown".into()),
     }
 }
@@ -152,35 +173,6 @@ fn convert_type_ann(ann: &TypeAnn) -> TypeKind {
         TypeAnn::Tuple(types) => TypeKind::Tuple(types.iter().map(convert_type_ann).collect()),
         TypeAnn::Optional(inner) => TypeKind::Optional(Box::new(convert_type_ann(inner))),
         _ => TypeKind::Unknown,
-    }
-}
-
-fn extract_pat_name(pat: &Pat) -> Option<&str> {
-    match pat {
-        Pat::Ident(bi) => Some(&bi.id.name),
-        _ => None,
-    }
-}
-
-fn extract_pat_type_kind(pat: &Pat) -> TypeKind {
-    match pat {
-        Pat::Ident(bi) => bi
-            .type_ann
-            .as_ref()
-            .map_or(TypeKind::Unknown, convert_type_ann),
-        _ => TypeKind::Unknown,
-    }
-}
-
-fn pat_span(pat: &Pat) -> crate::span::Span {
-    match pat {
-        Pat::Ident(b) => b.span,
-        Pat::Object(o) => o.span,
-        Pat::Array(a) => a.span,
-        Pat::Rest(r) => r.span,
-        Pat::Assign(a) => a.span,
-        Pat::Expr(_) => crate::span::Span::ZERO,
-        Pat::Invalid(i) => i.span,
     }
 }
 
@@ -517,7 +509,7 @@ fn process_class_member(
 
 // ─── imports ───
 
-pub fn extract_imports(program: &Program, _arena: &Arena<Expr>) -> Vec<ParsedImport> {
+pub fn extract_imports(program: &Program, arena: &Arena<Expr>) -> Vec<ParsedImport> {
     let mut imports = Vec::new();
     if let Program::Module(m) = program {
         for item in &m.body {
@@ -528,42 +520,85 @@ pub fn extract_imports(program: &Program, _arena: &Arena<Expr>) -> Vec<ParsedImp
             }
         }
     }
+    for (_, expression) in arena.iter() {
+        if let Expr::Import(import) = expression {
+            let source = expr_name(import.source, arena).unwrap_or_else(|| "<dynamic>".into());
+            imports.push(
+                ParsedImport::builder(ImportKind::DynamicImport, source)
+                    .line(import.span.start.line)
+                    .build(),
+            );
+        }
+    }
     imports
 }
 
 fn process_import_decl(imp: &ImportDecl, imports: &mut Vec<ParsedImport>) {
     let source = imp.source.value.clone();
     let line = imp.span.start.line;
+    if imp.specifiers.is_empty() {
+        imports.push(
+            ParsedImport::builder(ImportKind::SideEffectImport, source)
+                .line(line)
+                .build(),
+        );
+        return;
+    }
     for spec in &imp.specifiers {
         match spec {
             AstImportSpecifier::Default(d) => {
+                let kind = if imp.is_type_only {
+                    ImportKind::TypeImport
+                } else {
+                    ImportKind::DefaultImport
+                };
                 imports.push(
-                    ParsedImport::builder(ImportKind::DefaultImport, &source)
+                    ParsedImport::builder(kind, &source)
                         .local(&d.local.name)
                         .line(line)
+                        .type_only(imp.is_type_only)
                         .build(),
                 );
             }
             AstImportSpecifier::Named(n) => {
+                let is_type_only = imp.is_type_only || n.is_type_only;
                 let specifiers = vec![ImportSpecifier {
                     imported: n.imported.name.clone(),
                     local: n.local.name.clone(),
-                    kind: ImportSpecifierKind::Named,
+                    kind: if is_type_only {
+                        ImportSpecifierKind::Type
+                    } else {
+                        ImportSpecifierKind::Named
+                    },
                 }];
                 imports.push(
-                    ParsedImport::builder(ImportKind::NamedImport, &source)
-                        .local(&n.local.name)
-                        .imported(&n.imported.name)
-                        .line(line)
-                        .specifiers(specifiers)
-                        .build(),
+                    ParsedImport::builder(
+                        if is_type_only {
+                            ImportKind::TypeImport
+                        } else {
+                            ImportKind::NamedImport
+                        },
+                        &source,
+                    )
+                    .local(&n.local.name)
+                    .imported(&n.imported.name)
+                    .line(line)
+                    .type_only(is_type_only)
+                    .specifiers(specifiers)
+                    .build(),
                 );
             }
             AstImportSpecifier::Namespace(ns) => {
+                let kind = if imp.is_type_only {
+                    ImportKind::TypeImport
+                } else {
+                    ImportKind::NamespaceImport
+                };
                 imports.push(
-                    ParsedImport::builder(ImportKind::NamespaceImport, &source)
+                    ParsedImport::builder(kind, &source)
                         .local(&ns.local.name)
                         .line(line)
+                        .type_only(imp.is_type_only)
                         .star(true)
                         .build(),
                 );
@@ -582,25 +617,51 @@ fn process_export_for_imports(export: &ExportDecl, imports: &mut Vec<ParsedImpor
                     .map(|s| ImportSpecifier {
                         imported: s.local.name.clone(),
                         local: s.exported.name.clone(),
-                        kind: ImportSpecifierKind::Named,
+                        kind: if named.is_type_only || s.is_type_only {
+                            ImportSpecifierKind::Type
+                        } else {
+                            ImportSpecifierKind::Named
+                        },
                     })
                     .collect();
+                let is_type_only = named.is_type_only
+                    || (!named.specifiers.is_empty()
+                        && named
+                            .specifiers
+                            .iter()
+                            .all(|specifier| specifier.is_type_only));
                 imports.push(
-                    ParsedImport::builder(ImportKind::ReExport, &source.value)
-                        .line(named.span.start.line)
-                        .reexport(true)
-                        .specifiers(specifiers)
-                        .build(),
+                    ParsedImport::builder(
+                        if is_type_only {
+                            ImportKind::TypeReExport
+                        } else {
+                            ImportKind::ReExport
+                        },
+                        &source.value,
+                    )
+                    .line(named.span.start.line)
+                    .reexport(true)
+                    .type_only(is_type_only)
+                    .specifiers(specifiers)
+                    .build(),
                 );
             }
         }
         ExportDecl::All(all) => {
             imports.push(
-                ParsedImport::builder(ImportKind::SideEffectImport, &all.source.value)
-                    .line(all.span.start.line)
-                    .reexport(true)
-                    .star(true)
-                    .build(),
+                ParsedImport::builder(
+                    if all.is_type_only {
+                        ImportKind::TypeReExport
+                    } else {
+                        ImportKind::ReExport
+                    },
+                    &all.source.value,
+                )
+                .line(all.span.start.line)
+                .reexport(true)
+                .type_only(all.is_type_only)
+                .star(true)
+                .build(),
             );
         }
         _ => {}
@@ -611,41 +672,61 @@ fn process_export_for_imports(export: &ExportDecl, imports: &mut Vec<ParsedImpor
 
 pub fn extract_calls(_program: &Program, arena: &Arena<Expr>) -> Vec<ParsedCall> {
     let mut calls = Vec::new();
-    for (_id, expr) in arena.iter() {
-        push_calls_for_expr(expr, arena, &mut calls);
+    let awaited = arena
+        .iter()
+        .filter_map(|(_, expr)| match expr {
+            Expr::Await(await_expr) => Some(await_expr.arg),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    for (id, expr) in arena.iter() {
+        push_calls_for_expr(expr, arena, awaited.contains(&id), &mut calls);
     }
     calls
 }
 
-/// Emits call facts for a single expression node. Used both while walking the
-/// arena and to recurse into pipeline bodies.
-fn push_calls_for_expr(expr: &Expr, arena: &Arena<Expr>, calls: &mut Vec<ParsedCall>) {
+/// Emits a call fact for a single expression node. The expression arena owns
+/// every nested expression, so this intentionally does not recurse: recursion
+/// would duplicate facts for calls nested inside pipeline expressions.
+fn push_calls_for_expr(
+    expr: &Expr,
+    arena: &Arena<Expr>,
+    is_await: bool,
+    calls: &mut Vec<ParsedCall>,
+) {
     match expr {
         Expr::Call(call) => {
             let (kind, callee_text) = resolve_callee(call.callee, arena);
             let callee_obj = resolve_callee_object(call.callee, arena);
-            calls.push(
-                ParsedCall::builder(kind, callee_text)
-                    .object(callee_obj.unwrap_or_default())
-                    .pos(call.span.start.line, call.span.start.column)
-                    .build(),
-            );
+            let mut fact = ParsedCall::builder(kind, callee_text)
+                .pos(call.span.start.line, call.span.start.column)
+                .await_(is_await)
+                .optional(callee_is_optional(call.callee, arena))
+                .type_args(call_type_args(call.callee, arena));
+            if let Some(object) = callee_obj {
+                fact = fact.object(object);
+            }
+            calls.push(fact.build());
         }
         Expr::OptionalCall(oc) => {
             let (kind, callee_text) = resolve_callee(oc.callee, arena);
             let callee_obj = resolve_callee_object(oc.callee, arena);
-            calls.push(
-                ParsedCall::builder(kind, callee_text)
-                    .object(callee_obj.unwrap_or_default())
-                    .pos(oc.span.start.line, oc.span.start.column)
-                    .build(),
-            );
+            let mut fact = ParsedCall::builder(kind, callee_text)
+                .pos(oc.span.start.line, oc.span.start.column)
+                .await_(is_await)
+                .optional(true)
+                .type_args(call_type_args(oc.callee, arena));
+            if let Some(object) = callee_obj {
+                fact = fact.object(object);
+            }
+            calls.push(fact.build());
         }
         Expr::New(new) => {
             let callee_text = expr_name(new.callee, arena).unwrap_or_else(|| "unknown".into());
             calls.push(
                 ParsedCall::builder(CallKind::ConstructorCall, callee_text)
                     .pos(new.span.start.line, new.span.start.column)
+                    .type_args(call_type_args(new.callee, arena))
                     .build(),
             );
         }
@@ -657,21 +738,27 @@ fn push_calls_for_expr(expr: &Expr, arena: &Arena<Expr>, calls: &mut Vec<ParsedC
                     .build(),
             );
         }
-        // A pipeline's body is the function applied to the input. The applied
-        // function is a call target (e.g. `x |> double`), so emit it as a call
-        // and also walk it in case it is itself a nested call (`x |> foo()`).
-        Expr::Pipeline(p) => {
-            if let Some(name) = expr_name(p.body, arena) {
-                calls.push(
-                    ParsedCall::builder(CallKind::FunctionCall, &name)
-                        .pos(
-                            arena[p.body].span().start.line,
-                            arena[p.body].span().start.column,
-                        )
-                        .build(),
-                );
-            }
-            push_calls_for_expr(&arena[p.body], arena, calls);
+        // A pipeline's body is the function applied to the input. A concrete
+        // call in the body has its own arena node, so emit a synthetic fact
+        // only for a bare function/member target.
+        Expr::Pipeline(p)
+            if !matches!(
+                arena[p.body],
+                Expr::Call(_) | Expr::OptionalCall(_) | Expr::New(_) | Expr::TaggedTemplate(_)
+            ) =>
+        {
+            let (kind, name) = resolve_callee(p.body, arena);
+            calls.push(
+                ParsedCall::builder(kind, name)
+                    .pos(
+                        arena[p.body].span().start.line,
+                        arena[p.body].span().start.column,
+                    )
+                    .await_(is_await)
+                    .optional(callee_is_optional(p.body, arena))
+                    .type_args(call_type_args(p.body, arena))
+                    .build(),
+            );
         }
         _ => {}
     }
@@ -680,7 +767,42 @@ fn push_calls_for_expr(expr: &Expr, arena: &Arena<Expr>, calls: &mut Vec<ParsedC
 fn resolve_callee_object(callee: ExprRef, arena: &Arena<Expr>) -> Option<String> {
     match &arena[callee] {
         Expr::Member(m) => expr_name(m.object, arena),
+        Expr::OptionalMember(m) => expr_name(m.object, arena),
+        Expr::TSAs(e) => resolve_callee_object(e.expr, arena),
+        Expr::TSSatisfies(e) => resolve_callee_object(e.expr, arena),
+        Expr::TSTypeAssertion(e) => resolve_callee_object(e.expr, arena),
+        Expr::TSNonNull(e) => resolve_callee_object(e.expr, arena),
+        Expr::TSInst(e) => resolve_callee_object(e.expr, arena),
+        Expr::Parenthesized(e) => resolve_callee_object(e.expr, arena),
+        Expr::Chain(e) => resolve_callee_object(e.expr, arena),
         _ => None,
+    }
+}
+
+fn callee_is_optional(callee: ExprRef, arena: &Arena<Expr>) -> bool {
+    match &arena[callee] {
+        Expr::OptionalMember(_) => true,
+        Expr::TSAs(e) => callee_is_optional(e.expr, arena),
+        Expr::TSSatisfies(e) => callee_is_optional(e.expr, arena),
+        Expr::TSTypeAssertion(e) => callee_is_optional(e.expr, arena),
+        Expr::TSNonNull(e) => callee_is_optional(e.expr, arena),
+        Expr::TSInst(e) => callee_is_optional(e.expr, arena),
+        Expr::Parenthesized(e) => callee_is_optional(e.expr, arena),
+        Expr::Chain(e) => callee_is_optional(e.expr, arena),
+        _ => false,
+    }
+}
+
+fn call_type_args(callee: ExprRef, arena: &Arena<Expr>) -> Vec<TypeKind> {
+    match &arena[callee] {
+        Expr::TSInst(e) => e.type_params.iter().map(convert_type_ann).collect(),
+        Expr::TSAs(e) => call_type_args(e.expr, arena),
+        Expr::TSSatisfies(e) => call_type_args(e.expr, arena),
+        Expr::TSTypeAssertion(e) => call_type_args(e.expr, arena),
+        Expr::TSNonNull(e) => call_type_args(e.expr, arena),
+        Expr::Parenthesized(e) => call_type_args(e.expr, arena),
+        Expr::Chain(e) => call_type_args(e.expr, arena),
+        _ => Vec::new(),
     }
 }
 
@@ -847,7 +969,7 @@ fn walk_into_decl_for_variables(
 
 fn process_var_decl(decl: &Decl, _arena: &Arena<Expr>, variables: &mut Vec<ParsedVariable>) {
     if let Decl::Var(v) = decl {
-        let is_mutable = matches!(v.kind, AstVarKind::Var);
+        let is_mutable = !matches!(v.kind, AstVarKind::Const | AstVarKind::Using);
         let vk = match v.kind {
             AstVarKind::Var => VarKind::Var,
             AstVarKind::Let => VarKind::Let,
@@ -855,32 +977,83 @@ fn process_var_decl(decl: &Decl, _arena: &Arena<Expr>, variables: &mut Vec<Parse
             AstVarKind::Using => VarKind::Let,
         };
         for declarator in &v.decls {
-            if let Some(name) = extract_pat_name(&declarator.name) {
-                let type_kind = extract_pat_type_kind(&declarator.name);
-                variables.push(
-                    ParsedVariable::builder(name, vk)
-                        .mutable(is_mutable)
-                        .line(declarator.span.start.line)
-                        .type_kind(type_kind)
-                        .build(),
-                );
-            }
+            extract_pattern_variables(&declarator.name, vk, is_mutable, variables);
         }
     }
 }
 
 fn extract_params_as_variables(params: &[Pat], variables: &mut Vec<ParsedVariable>) {
     for pat in params {
-        if let Some(name) = extract_pat_name(pat) {
-            let type_kind = extract_pat_type_kind(pat);
-            variables.push(
-                ParsedVariable::builder(name, VarKind::Parameter)
-                    .line(pat_span(pat).start.line)
-                    .type_kind(type_kind)
-                    .build(),
-            );
-        }
+        extract_pattern_variables(pat, VarKind::Parameter, true, variables);
     }
+}
+
+/// Destructuring creates a binding for every identifier nested in its pattern.
+/// Preserve those bindings rather than collapsing the whole pattern into an
+/// anonymous variable, which is essential for rename/reference tools.
+fn extract_pattern_variables(
+    pat: &Pat,
+    kind: VarKind,
+    is_mutable: bool,
+    variables: &mut Vec<ParsedVariable>,
+) {
+    match pat {
+        Pat::Ident(binding) => push_binding_variable(binding, kind, is_mutable, variables),
+        Pat::Object(object) => {
+            for property in &object.props {
+                match property {
+                    ObjectPatProp::KeyValue(property) => {
+                        extract_pattern_variables(&property.value, kind, is_mutable, variables);
+                    }
+                    ObjectPatProp::Shorthand(binding) => {
+                        push_binding_variable(binding, kind, is_mutable, variables);
+                    }
+                    ObjectPatProp::Rest(rest) => {
+                        extract_pattern_variables(&rest.arg, kind, is_mutable, variables);
+                    }
+                }
+            }
+            if let Some(rest) = &object.rest {
+                extract_pattern_variables(&rest.arg, kind, is_mutable, variables);
+            }
+        }
+        Pat::Array(array) => {
+            for element in array.elements.iter().flatten() {
+                extract_pattern_variables(element, kind, is_mutable, variables);
+            }
+            if let Some(rest) = &array.rest {
+                extract_pattern_variables(&rest.arg, kind, is_mutable, variables);
+            }
+        }
+        Pat::Rest(rest) => extract_pattern_variables(&rest.arg, kind, is_mutable, variables),
+        Pat::Assign(assign) => {
+            extract_pattern_variables(&assign.left, kind, is_mutable, variables);
+        }
+        Pat::Expr(_) | Pat::Invalid(_) => {}
+    }
+}
+
+fn push_binding_variable(
+    binding: &BindingIdent,
+    kind: VarKind,
+    is_mutable: bool,
+    variables: &mut Vec<ParsedVariable>,
+) {
+    if binding.id.name.is_empty() {
+        return;
+    }
+    variables.push(
+        ParsedVariable::builder(&binding.id.name, kind)
+            .mutable(is_mutable)
+            .line(binding.span.start.line)
+            .type_kind(
+                binding
+                    .type_ann
+                    .as_ref()
+                    .map_or(TypeKind::Unknown, convert_type_ann),
+            )
+            .build(),
+    );
 }
 
 /// JS/TS test-function heuristic. Covers the common naming conventions:

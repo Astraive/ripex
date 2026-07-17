@@ -142,6 +142,25 @@ fn parse_obj_pat_prop(parser: &mut Parser) -> ObjectPatProp {
             let span = parser.span_since(start);
             let key = PropName::Ident(ident.clone());
             ObjectPatProp::KeyValue(KeyValuePatProp { span, key, value })
+        } else if parser.peek() == TokenKind::Eq {
+            parser.advance();
+            let right = parser.parse_assignment_expr();
+            let binding = Pat::Ident(BindingIdent {
+                span: ident.span,
+                id: ident.clone(),
+                type_ann: None,
+                optional: false,
+            });
+            let value = Pat::Assign(AssignPat {
+                span: parser.span_since(start),
+                left: Box::new(binding),
+                right,
+            });
+            ObjectPatProp::KeyValue(KeyValuePatProp {
+                span: parser.span_since(start),
+                key: PropName::Ident(ident),
+                value: Box::new(value),
+            })
         } else {
             let type_ann = super::typescript::maybe_parse_ts_type_ann(parser);
             let span = if type_ann.is_some() {

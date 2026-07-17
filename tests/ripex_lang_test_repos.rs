@@ -5,9 +5,10 @@
 //! suite. Reports per-language coverage (files / ok / parse-errors / panics /
 //! hangs / facts).
 //!
-//! This is a regression gate for crashes, hangs, and diagnostic budgets.
+//! This is a regression gate for crashes, hangs, diagnostics, and missing fact
+//! categories.
 //!
-//! Known gap features deliberately included so the run surfaces them:
+//! Advanced features deliberately included so regressions surface immediately:
 //! - JS: class static blocks, decorators, `export * as ns`, top-level await
 //! - non-JS: Go method receivers, Rust macro bodies, C++ lambda/template bodies,
 //!   f-string expressions, enum members, etc.
@@ -55,6 +56,10 @@ struct LangStat {
     panics: usize,
     hangs: usize,
     facts: usize,
+    symbols: usize,
+    imports: usize,
+    calls: usize,
+    variables: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -71,6 +76,10 @@ struct FileResult {
     outcome: Outcome,
     error_count: usize,
     facts: usize,
+    symbols: usize,
+    imports: usize,
+    calls: usize,
+    variables: usize,
 }
 
 fn walkdir(root: &Path) -> Vec<PathBuf> {
@@ -81,7 +90,13 @@ fn walkdir(root: &Path) -> Vec<PathBuf> {
             for e in rd.flatten() {
                 let p = e.path();
                 if p.is_dir() {
-                    stack.push(p);
+                    let name = p.file_name().and_then(|name| name.to_str());
+                    if !matches!(
+                        name,
+                        Some("node_modules" | "target" | ".git" | ".next" | "dist" | "build")
+                    ) {
+                        stack.push(p);
+                    }
                 } else {
                     out.push(p);
                 }
@@ -111,15 +126,21 @@ fn try_file(path: &Path, lang_static: &'static str, ext: &str) -> Option<FileRes
             };
             let pr: ParseResult = parser.parse(&src);
             let ex: ExtractionResult = parser.extract(&pr);
-            let facts = ex.symbols.len() + ex.imports.len() + ex.calls.len() + ex.variables.len();
-            let _ = tx.send((pr.errors.len(), facts));
+            let counts = (
+                ex.symbols.len(),
+                ex.imports.len(),
+                ex.calls.len(),
+                ex.variables.len(),
+            );
+            let _ = tx.send((pr.errors.len(), counts));
         }));
     });
 
     let full_rel = path.to_string_lossy().replace('\\', "/");
 
     match rx.recv_timeout(Duration::from_millis(PER_FILE_TIMEOUT_MS)) {
-        Ok((error_count, facts)) => {
+        Ok((error_count, (symbols, imports, calls, variables))) => {
+            let facts = symbols + imports + calls + variables;
             let outcome = if error_count == 0 {
                 Outcome::Ok
             } else {
@@ -131,6 +152,10 @@ fn try_file(path: &Path, lang_static: &'static str, ext: &str) -> Option<FileRes
                 outcome,
                 error_count,
                 facts,
+                symbols,
+                imports,
+                calls,
+                variables,
             })
         }
         Err(mpsc::RecvTimeoutError::Timeout) => Some(FileResult {
@@ -139,6 +164,10 @@ fn try_file(path: &Path, lang_static: &'static str, ext: &str) -> Option<FileRes
             outcome: Outcome::Hang,
             error_count: 0,
             facts: 0,
+            symbols: 0,
+            imports: 0,
+            calls: 0,
+            variables: 0,
         }),
         Err(mpsc::RecvTimeoutError::Disconnected) => Some(FileResult {
             rel: full_rel,
@@ -146,6 +175,10 @@ fn try_file(path: &Path, lang_static: &'static str, ext: &str) -> Option<FileRes
             outcome: Outcome::Panic,
             error_count: 0,
             facts: 0,
+            symbols: 0,
+            imports: 0,
+            calls: 0,
+            variables: 0,
         }),
     }
 }
@@ -177,6 +210,10 @@ fn end_to_end_ripex_lang_test() {
             let s = stat.entry(lang.to_string()).or_default();
             s.files += 1;
             s.facts += fr.facts;
+            s.symbols += fr.symbols;
+            s.imports += fr.imports;
+            s.calls += fr.calls;
+            s.variables += fr.variables;
             match fr.outcome {
                 Outcome::Ok => s.ok += 1,
                 Outcome::Err => s.errors += fr.error_count,
@@ -197,25 +234,35 @@ fn end_to_end_ripex_lang_test() {
     println!("\n=== ripex end-to-end corpus report ===");
     println!("corpus: {}", root.display());
     println!(
-        "{:<11} {:>5} {:>4} {:>7} {:>6} {:>5} {:>6}",
-        "lang", "files", "ok", "errors", "panics", "hangs", "facts"
+        "{:<11} {:>5} {:>4} {:>7} {:>6} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5}",
+        "lang", "files", "ok", "errors", "panics", "hangs", "facts", "sym", "imp", "call", "var"
     );
-    println!("{}", "-".repeat(46));
+    println!("{}", "-".repeat(70));
     let mut files_total = 0;
     let mut ok_total = 0;
     let mut errors_total = 0;
     let mut facts_total = 0;
     for (lang, s) in &stat {
         println!(
-            "{:<11} {:>5} {:>4} {:>7} {:>6} {:>5} {:>6}",
-            lang, s.files, s.ok, s.errors, s.panics, s.hangs, s.facts
+            "{:<11} {:>5} {:>4} {:>7} {:>6} {:>5} {:>6} {:>5} {:>5} {:>5} {:>5}",
+            lang,
+            s.files,
+            s.ok,
+            s.errors,
+            s.panics,
+            s.hangs,
+            s.facts,
+            s.symbols,
+            s.imports,
+            s.calls,
+            s.variables
         );
         files_total += s.files;
         ok_total += s.ok;
         errors_total += s.errors;
         facts_total += s.facts;
     }
-    println!("{}", "-".repeat(46));
+    println!("{}", "-".repeat(70));
     println!(
         "{:<11} {:>5} {:>4} {:>7} {:>6} {:>5} {:>6}",
         "TOTAL", files_total, ok_total, errors_total, total_panics, total_hangs, facts_total
@@ -263,30 +310,18 @@ fn end_to_end_ripex_lang_test() {
     // regression and fails the suite.
     assert_eq!(total_hangs, 0, "ripex hung on {} file(s)", total_hangs);
 
-    // Facts must actually be extracted across the corpus.
-    assert!(
-        facts_total > 0,
-        "no facts extracted at all — extraction pipeline is broken"
-    );
-
-    // Languages that currently cover the complete checked-in corpus must stay
-    // clean. Other parsers have explicit non-increasing budgets so coverage
-    // work cannot silently regress while their remaining syntax is completed.
-    let error_budgets = [
-        ("c", 36usize),
-        ("cpp", 104),
-        ("csharp", 105),
-        ("go", 0),
-        ("javascript", 0),
-        ("python", 0),
-        ("rust", 0),
-        ("typescript", 20),
-    ];
-    for (language, budget) in error_budgets {
-        let actual = stat.get(language).map_or(0, |value| value.errors);
-        assert!(
-            actual <= budget,
-            "{language} emitted {actual} diagnostics; regression budget is {budget}"
-        );
+    // Every language promises all four public fact categories. Require each
+    // category to be exercised so an empty extractor cannot pass unnoticed.
+    for (language, value) in &stat {
+        assert!(value.symbols > 0, "{language} extracted no symbols");
+        assert!(value.imports > 0, "{language} extracted no imports");
+        assert!(value.calls > 0, "{language} extracted no calls");
+        assert!(value.variables > 0, "{language} extracted no variables");
     }
+
+    assert_eq!(errors_total, 0, "the corpus emitted parser diagnostics");
+    assert_eq!(
+        ok_total, files_total,
+        "not every corpus file parsed cleanly"
+    );
 }

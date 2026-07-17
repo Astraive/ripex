@@ -2,11 +2,25 @@
 
 ## Unreleased
 
+- Clarified Ripex's parser-and-facts focus: external toolchain validation is
+  optional and remains separate from the in-process structural parsers.
+- Added JavaScript/TypeScript comment retention to `ParseResult`, including
+  hashbang and end-of-file comments with source spans and CLI JSON output.
+- Added JavaScript/TypeScript facts for optional and awaited generic calls,
+  dynamic imports, destructured bindings, and correct `let` mutability.
+- Added TypeScript type-only import/re-export support, standard `with` import
+  attributes, and correct `export { local as exported }` alias ordering.
+- Hardened corpus walkers to ignore generated and dependency directories such
+  as `node_modules`, `target`, and `dist`.
+- Added production-toolchain compiler/type checking through the public
+  `ripex::compiler` API and `ripex check` CLI command.
+- Added strict compiler-conformance CI for C, C++, C#, Go, JavaScript,
+  TypeScript/TSX, Python, and Rust fixture projects.
 - Added extension-aware JavaScript, TypeScript, JSX, and TSX parser selection.
 - Added a public `Language` API, path detection, and versioned structured CLI JSON.
 - Made serialization optional through a dedicated `serde` feature.
 - Fixed parser hangs and common syntax handling across Go, Python, Rust, C, C++, and JavaScript.
-- Added generator-reuse tests and per-language corpus diagnostic budgets.
+- Added generator-reuse tests and zero-diagnostic per-language corpus gates.
 - Added isolated feature, minimal-library, documentation, and all-target CI checks.
 
 ## v0.1.0

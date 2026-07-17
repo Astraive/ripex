@@ -331,6 +331,28 @@ pub fn parse_expr(parser: &mut Parser, min_bp: u8) -> ExprRef {
         {
             break;
         }
+        // In TypeScript, `<T>` after an expression is a postfix type
+        // instantiation, not a relational expression. Parse it before the
+        // relational precedence gate so unary expressions such as
+        // `await api.fetch<Response>()` retain the complete call as their arg.
+        if kind == TokenKind::Lt && parser.options.features.typescript && min_bp < 17 {
+            if let Some(type_params) = super::typescript::try_parse_ts_type_args(parser) {
+                let end = parser
+                    .previous_token()
+                    .map(|token| token.span.end)
+                    .unwrap_or_else(|| parser.ast[left].span().end);
+                left = parser.ast.alloc(Expr::TSInst(TSInstantiationExpr {
+                    span: Span::new(parser.ast[left].span().start, end),
+                    expr: left,
+                    type_params,
+                }));
+                if parser.peek() == TokenKind::LParen {
+                    left = parse_call_tail(parser, left);
+                }
+                continue;
+            }
+        }
+
         if matches!(
             kind,
             TokenKind::Lt
@@ -372,7 +394,14 @@ pub fn parse_expr(parser: &mut Parser, min_bp: u8) -> ExprRef {
             if min_bp >= 17 {
                 break;
             }
-            left = parse_member_tail(parser, left);
+            if kind == TokenKind::QuestionDot && parser.peek_ahead(1) == TokenKind::LParen {
+                left = parse_optional_call_tail(parser, left);
+            } else if kind == TokenKind::QuestionDot && parser.peek_ahead(1) == TokenKind::LBracket
+            {
+                left = parse_computed_member_tail(parser, left, true);
+            } else {
+                left = parse_member_tail(parser, left);
+            }
             continue;
         }
 
@@ -388,37 +417,8 @@ pub fn parse_expr(parser: &mut Parser, min_bp: u8) -> ExprRef {
             if min_bp >= 17 {
                 break;
             }
-            left = parse_computed_member_tail(parser, left);
+            left = parse_computed_member_tail(parser, left, false);
             continue;
-        }
-
-        if kind == TokenKind::Lt && parser.options.features.typescript {
-            if min_bp >= 17 {
-                break;
-            }
-            if let Some(_ta) = super::typescript::try_parse_ts_type_args(parser) {
-                if parser.peek() == TokenKind::LParen {
-                    parser.advance();
-                    let mut args = Vec::new();
-                    while parser.peek() != TokenKind::RParen && !parser.is_eof() {
-                        args.push(parse_assign_expr(parser));
-                        if parser.peek() == TokenKind::Comma {
-                            parser.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                    parser.expect(TokenKind::RParen).ok();
-                    let span = parser.span_since(start);
-                    left = parser.ast.alloc(Expr::Call(CallExpr {
-                        span,
-                        callee: left,
-                        args,
-                    }));
-                }
-                continue;
-            }
-            break;
         }
 
         if kind == TokenKind::As && parser.options.features.typescript {
@@ -1069,8 +1069,7 @@ fn parse_cond_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
 }
 
 fn parse_member_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
-    let start = parser.current_pos();
-    let _optional = parser.peek() == TokenKind::QuestionDot;
+    let optional = parser.peek() == TokenKind::QuestionDot;
     // `?.` and plain `.` both just consume one token before the member name.
     parser.advance();
 
@@ -1082,12 +1081,21 @@ fn parse_member_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
             optional: false,
         });
         let span = Span::new(parser.ast[left].span().start, tok.span.end);
-        parser.ast.alloc(Expr::Member(MemberExpr {
-            span,
-            object: left,
-            property: Box::new(prop),
-            computed: false,
-        }))
+        if optional {
+            parser.ast.alloc(Expr::OptionalMember(OptionalMemberExpr {
+                span,
+                object: left,
+                property: Box::new(prop),
+                computed: false,
+            }))
+        } else {
+            parser.ast.alloc(Expr::Member(MemberExpr {
+                span,
+                object: left,
+                property: Box::new(prop),
+                computed: false,
+            }))
+        }
     } else if parser.peek() == TokenKind::PrivateName {
         let tok = parser.advance();
         let prop = Expr::PrivateName(PrivateNameExpr {
@@ -1099,12 +1107,21 @@ fn parse_member_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
             },
         });
         let span = Span::new(parser.ast[left].span().start, tok.span.end);
-        parser.ast.alloc(Expr::Member(MemberExpr {
-            span,
-            object: left,
-            property: Box::new(prop),
-            computed: false,
-        }))
+        if optional {
+            parser.ast.alloc(Expr::OptionalMember(OptionalMemberExpr {
+                span,
+                object: left,
+                property: Box::new(prop),
+                computed: false,
+            }))
+        } else {
+            parser.ast.alloc(Expr::Member(MemberExpr {
+                span,
+                object: left,
+                property: Box::new(prop),
+                computed: false,
+            }))
+        }
     } else {
         let tok = parser.current_token().clone();
         let err = parser.error(DiagnosticCode::UnexpectedToken, &tok);
@@ -1115,32 +1132,56 @@ fn parse_member_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
             optional: false,
         });
         parser.advance();
-        let span = parser.span_since(start);
+        let span = Span::new(parser.ast[left].span().start, tok.span.end);
+        if optional {
+            parser.ast.alloc(Expr::OptionalMember(OptionalMemberExpr {
+                span,
+                object: left,
+                property: Box::new(prop),
+                computed: false,
+            }))
+        } else {
+            parser.ast.alloc(Expr::Member(MemberExpr {
+                span,
+                object: left,
+                property: Box::new(prop),
+                computed: false,
+            }))
+        }
+    }
+}
+
+fn parse_computed_member_tail(parser: &mut Parser, left: ExprRef, optional: bool) -> ExprRef {
+    if optional {
+        parser.advance();
+    }
+    parser.expect(TokenKind::LBracket).ok();
+    let expr = parse_assign_expr(parser);
+    parser.expect(TokenKind::RBracket).ok();
+    let end = parser
+        .previous_token()
+        .map(|token| token.span.end)
+        .unwrap_or_else(|| parser.ast[expr].span().end);
+    let span = Span::new(parser.ast[left].span().start, end);
+    let prop = parser.ast[expr].clone();
+    if optional {
+        parser.ast.alloc(Expr::OptionalMember(OptionalMemberExpr {
+            span,
+            object: left,
+            property: Box::new(prop),
+            computed: true,
+        }))
+    } else {
         parser.ast.alloc(Expr::Member(MemberExpr {
             span,
             object: left,
             property: Box::new(prop),
-            computed: false,
+            computed: true,
         }))
     }
 }
 
-fn parse_computed_member_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
-    parser.advance();
-    let expr = parse_assign_expr(parser);
-    parser.expect(TokenKind::RBracket).ok();
-    let span = Span::new(parser.ast[left].span().start, parser.ast[expr].span().end);
-    let prop = parser.ast[expr].clone();
-    parser.ast.alloc(Expr::Member(MemberExpr {
-        span,
-        object: left,
-        property: Box::new(prop),
-        computed: true,
-    }))
-}
-
 fn parse_call_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
-    let start = parser.current_pos();
     parser.advance();
     let mut args = Vec::new();
     while parser.peek() != TokenKind::RParen && !parser.is_eof() {
@@ -1157,8 +1198,41 @@ fn parse_call_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
         }
     }
     parser.expect(TokenKind::RParen).ok();
-    let span = parser.span_since(start);
+    let end = parser
+        .previous_token()
+        .map(|token| token.span.end)
+        .unwrap_or_else(|| parser.ast[left].span().end);
+    let span = Span::new(parser.ast[left].span().start, end);
     parser.ast.alloc(Expr::Call(CallExpr {
+        span,
+        callee: left,
+        args,
+    }))
+}
+
+fn parse_optional_call_tail(parser: &mut Parser, left: ExprRef) -> ExprRef {
+    parser.expect(TokenKind::QuestionDot).ok();
+    parser.expect(TokenKind::LParen).ok();
+    let mut args = Vec::new();
+    while parser.peek() != TokenKind::RParen && !parser.is_eof() {
+        if parser.peek() == TokenKind::DotDotDot {
+            args.push(parse_spread_expr(parser));
+        } else {
+            args.push(parse_assign_expr(parser));
+        }
+        if parser.peek() == TokenKind::Comma {
+            parser.advance();
+        } else {
+            break;
+        }
+    }
+    parser.expect(TokenKind::RParen).ok();
+    let end = parser
+        .previous_token()
+        .map(|token| token.span.end)
+        .unwrap_or_else(|| parser.ast[left].span().end);
+    let span = Span::new(parser.ast[left].span().start, end);
+    parser.ast.alloc(Expr::OptionalCall(OptionalCallExpr {
         span,
         callee: left,
         args,

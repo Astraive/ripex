@@ -1,5 +1,12 @@
 mod fixtures;
 
+#[test]
+fn parses_multi_argument_generic_annotations() {
+    let source = "def apply(fn: Callable[P, R]) -> Generator[int, None, None]:\n    pass\n";
+    let (_, errors) = crate::python::parse_program(source);
+    assert!(errors.is_empty(), "{errors:#?}");
+}
+
 use super::facts::{extract_facts, extract_imports, extract_symbols, extract_variables};
 use super::lexer::{Lexer, TokenKind};
 use super::parser::parse_program;

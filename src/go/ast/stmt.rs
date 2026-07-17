@@ -6,6 +6,7 @@ pub enum Stmt {
     Expr(Expr, Span),
     Decl(Decl, Span),
     Assign(Vec<Expr>, Vec<Expr>, Span),
+    Define(Vec<Expr>, Vec<Expr>, Span),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>, Span),
     For(
         Option<Box<Stmt>>,
@@ -37,6 +38,7 @@ pub enum Decl {
     Type(TypeDecl, Span),
     Func(FuncDecl, Span),
     Import(ImportDecl, Span),
+    ImportGroup(Vec<ImportDecl>, Span),
     Package(String, Span),
 }
 

@@ -758,6 +758,81 @@ fn test_import_assertions_multiple() {
 }
 
 #[test]
+fn test_standard_import_attributes_with_syntax() {
+    let (module, errors, _) = parse_module_with_features(
+        "import data from './data.json' with { type: 'json', mode: 'strict' };",
+        &["import_attributes"],
+    );
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    match &module.body[0] {
+        ModuleItem::Import(import_decl) => {
+            assert_eq!(import_decl.source.value, "./data.json");
+            assert_eq!(import_decl.assertions.len(), 2);
+        }
+        _ => panic!("expected import declaration"),
+    }
+}
+
+#[test]
+fn test_typescript_type_imports_and_reexports_preserve_facts() {
+    let mut options = ParserOptions::module();
+    crate::js::config::ParserPlugins::typescript().apply(&mut options);
+    let source = r#"
+        import type { User as UserModel } from "./models";
+        import { type Config, run as execute } from "./runtime";
+        export type { User as PublicUser } from "./models";
+        export { type Config as PublicConfig, run as publicRun } from "./runtime";
+        export type * from "./all-types";
+    "#;
+    let (program, errors, ast) = parser::parse_program(source, &options);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+
+    let facts = crate::js::facts::extract_facts(&program, &ast);
+    assert!(facts.imports.iter().any(|import| {
+        import.kind == crate::facts::ImportKind::TypeImport
+            && import.source == "./models"
+            && import.imported_name.as_deref() == Some("User")
+            && import.local_name.as_deref() == Some("UserModel")
+            && import.is_type_only
+    }));
+    assert!(facts.imports.iter().any(|import| {
+        import.kind == crate::facts::ImportKind::TypeImport
+            && import.source == "./runtime"
+            && import.imported_name.as_deref() == Some("Config")
+            && import.is_type_only
+    }));
+    assert!(facts.imports.iter().any(|import| {
+        import.kind == crate::facts::ImportKind::NamedImport
+            && import.source == "./runtime"
+            && import.imported_name.as_deref() == Some("run")
+            && import.local_name.as_deref() == Some("execute")
+            && !import.is_type_only
+    }));
+    assert!(facts.imports.iter().any(|import| {
+        import.kind == crate::facts::ImportKind::TypeReExport
+            && import.source == "./models"
+            && import.specifiers[0].imported == "User"
+            && import.specifiers[0].local == "PublicUser"
+            && import.is_type_only
+    }));
+    assert!(facts.imports.iter().any(|import| {
+        import.kind == crate::facts::ImportKind::ReExport
+            && import.source == "./runtime"
+            && import
+                .specifiers
+                .iter()
+                .any(|specifier| specifier.imported == "run" && specifier.local == "publicRun")
+            && !import.is_type_only
+    }));
+    assert!(facts.imports.iter().any(|import| {
+        import.kind == crate::facts::ImportKind::TypeReExport
+            && import.source == "./all-types"
+            && import.is_star_import
+            && import.is_type_only
+    }));
+}
+
+#[test]
 fn test_decorators_on_class() {
     let (program, errors, _) = parse("@sealed class Foo {}");
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -908,4 +983,88 @@ fn test_class_accessors_and_static_block() {
 fn test_parenthesized_conditional_expression() {
     let (_, errors, _) = parse("const max = (a, b) => (a > b ? a : b);");
     assert!(errors.is_empty(), "parse errors: {errors:?}");
+}
+
+#[test]
+fn test_typescript_generic_class() {
+    let mut options = ParserOptions::module();
+    crate::js::config::ParserPlugins::typescript().apply(&mut options);
+    let (_, errors, _) = parser::parse_program(
+        "export class Repository<T extends Identifiable> { get(id: number): T | undefined { return this.items.get(id); } }",
+        &options,
+    );
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+}
+
+#[test]
+fn test_tsx_typed_destructuring_and_nested_elements() {
+    let mut options = ParserOptions::module();
+    crate::js::config::ParserPlugins::all_ts().apply(&mut options);
+    let source = "function Header({ title, count = 0 }: Props) { return (<header><h1>{title}</h1><span>{count}</span></header>); }";
+    let (_, errors, _) = parser::parse_program(source, &options);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+}
+
+#[test]
+fn test_typescript_optional_calls_and_destructuring_facts() {
+    let mut options = ParserOptions::module();
+    crate::js::config::ParserPlugins::all_ts().apply(&mut options);
+    let source = r#"
+        const { account: { id }, role = "guest", ...rest } = input;
+        let [first, , { name }, ...tail] = values;
+        const response = await client?.fetch<Response>?.("/api");
+        const feature = await import("./feature.js");
+        const output = value |> transform();
+    "#;
+    let (program, errors, ast) = parser::parse_program(source, &options);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+
+    let facts = crate::js::facts::extract_facts(&program, &ast);
+    let names: Vec<&str> = facts
+        .variables
+        .iter()
+        .map(|variable| variable.name.as_str())
+        .collect();
+    for expected in [
+        "id", "role", "rest", "first", "name", "tail", "response", "feature", "output",
+    ] {
+        assert!(
+            names.contains(&expected),
+            "missing destructured binding {expected}: {names:?}"
+        );
+    }
+    assert!(facts
+        .variables
+        .iter()
+        .find(|variable| variable.name == "first")
+        .is_some_and(|variable| variable.is_mutable));
+
+    let fetch = facts
+        .calls
+        .iter()
+        .find(|call| call.callee_text == "client.fetch")
+        .unwrap_or_else(|| {
+            panic!(
+                "optional generic call facts: {:#?}\narena: {ast:#?}",
+                facts.calls
+            )
+        });
+    assert!(fetch.is_optional);
+    assert!(fetch.is_await);
+    assert_eq!(
+        fetch.type_args,
+        vec![crate::facts::TypeKind::simple("Response")]
+    );
+    assert_eq!(
+        facts
+            .calls
+            .iter()
+            .filter(|call| call.callee_text == "transform")
+            .count(),
+        1,
+        "pipeline calls must not be duplicated"
+    );
+    assert!(facts.imports.iter().any(|import| {
+        import.kind == crate::facts::ImportKind::DynamicImport && import.source == "./feature.js"
+    }));
 }

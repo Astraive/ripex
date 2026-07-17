@@ -1,7 +1,8 @@
-//! ripex — hand-written recursive-descent parsers for 8 languages.
-//! Architecture: Lexer → Parser → AST → (optional) Transform → Codegen
+//! Multi-language structural parsing, fact extraction, canonical generation,
+//! and production-toolchain-backed compiler validation.
 
 pub mod arena;
+pub mod compiler;
 pub mod diagnostics;
 pub mod facts;
 pub mod limits;
@@ -143,6 +144,8 @@ pub trait LanguageParser: Send + Sync {
 pub struct ParseResult {
     pub source: String,
     pub errors: Vec<diagnostics::ParseError>,
+    /// Source comments captured by parsers that support comment retention.
+    pub comments: Vec<ParsedComment>,
     pub ast: Program,
 }
 
@@ -255,6 +258,7 @@ macro_rules! lang_parser_impl {
                 ParseResult {
                     source: source.to_string(),
                     errors,
+                    comments: Vec::new(),
                     ast: Program::$variant(ast),
                 }
             }
@@ -298,9 +302,9 @@ pub struct JavascriptParser {
 impl JavascriptParser {
     /// Plain JavaScript (Script mode, no TypeScript syntax).
     pub fn new() -> Self {
-        JavascriptParser {
-            options: js::config::ParserOptions::default(),
-        }
+        let mut options = js::config::ParserOptions::default();
+        options.features.import_attributes = true;
+        JavascriptParser { options }
     }
 
     /// TypeScript-capable parser (Module mode with TS + JSX features enabled).
@@ -331,9 +335,11 @@ impl JavascriptParser {
             "tsx" => Self::with_typescript_jsx(),
             "ts" | "mts" | "cts" => Self::with_typescript(),
             "jsx" => Self::with_jsx(),
-            "js" | "mjs" => Self {
-                options: js::config::ParserOptions::module(),
-            },
+            "js" | "mjs" => {
+                let mut options = js::config::ParserOptions::module();
+                options.features.import_attributes = true;
+                Self { options }
+            }
             _ => Self::new(),
         }
     }
@@ -355,10 +361,25 @@ impl LanguageParser for JavascriptParser {
         &["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"]
     }
     fn parse(&self, source: &str) -> ParseResult {
-        let (program, errors, arena) = js::parser::parse_program(source, &self.options);
+        let (program, errors, arena, comments) =
+            js::parser::parse_program_with_comments(source, &self.options);
         ParseResult {
             source: source.to_string(),
             errors,
+            comments: comments
+                .into_iter()
+                .map(|comment| ParsedComment {
+                    kind: if comment.text.starts_with("#!") {
+                        CommentKind::Hashbang
+                    } else if comment.multi_line {
+                        CommentKind::Block
+                    } else {
+                        CommentKind::Line
+                    },
+                    text: comment.text,
+                    span: comment.span,
+                })
+                .collect(),
             ast: Program::Js(program, arena),
         }
     }

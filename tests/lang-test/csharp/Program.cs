@@ -18,4 +18,5 @@ Console.WriteLine($"sum={MathUtil.Sum(MathUtil.Squares(new[] { -1, 2, 3 }).ToArr
 
 var svc = new AsyncService();
 var results = await svc.FetchAllAsync(new[] { "a", "b" });
+Console.WriteLine(string.Join(", ", results));
 Console.WriteLine(alice.Name.Truncate(3));

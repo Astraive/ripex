@@ -142,6 +142,17 @@ impl ExtractionResult {
         self.calls
             .retain(|call| !call.callee_text.trim().is_empty());
     }
+    pub fn find_symbols_by_name<'a>(&'a self, name: &str) -> Vec<&'a ParsedSymbol> {
+        self.symbols.iter().filter(|s| s.name.contains(name)).collect()
+    }
+
+    pub fn find_calls_by_callee<'a>(&'a self, callee: &str) -> Vec<&'a ParsedCall> {
+        self.calls.iter().filter(|c| c.callee_text.contains(callee)).collect()
+    }
+
+    pub fn find_imports_by_source<'a>(&'a self, source: &str) -> Vec<&'a ParsedImport> {
+        self.imports.iter().filter(|i| i.source.contains(source)).collect()
+    }
 }
 
 /// Completeness of a parser result and its semantic facts.

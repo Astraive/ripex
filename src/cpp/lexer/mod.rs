@@ -288,6 +288,13 @@ impl<'a> Lexer<'a> {
                 self.scanner.advance();
                 TokenKind::At
             }
+            '\r' => {
+                self.scanner.advance();
+                if self.scanner.peek() == Some('\n') {
+                    self.scanner.advance();
+                }
+                TokenKind::Newline
+            }
             '\n' => {
                 self.scanner.advance();
                 TokenKind::Newline

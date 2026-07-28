@@ -300,6 +300,14 @@ impl<'a> Lexer<'a> {
                 self.scanner.advance();
                 TokenKind::Tilde
             }
+            '\r' => {
+                self.scanner.advance();
+                if self.scanner.peek() == Some('\n') {
+                    self.scanner.advance();
+                }
+                self.in_preproc = false;
+                TokenKind::Newline
+            }
             '\n' => {
                 self.scanner.advance();
                 self.in_preproc = false;
@@ -325,7 +333,13 @@ impl<'a> Lexer<'a> {
                 Some(' ') | Some('\t') => {
                     self.scanner.advance();
                 }
-                Some('\n') | Some('\r') if !self.in_preproc => {
+                Some('\r') if !self.in_preproc => {
+                    self.scanner.advance();
+                    if self.scanner.peek() == Some('\n') {
+                        self.scanner.advance();
+                    }
+                }
+                Some('\n') if !self.in_preproc => {
                     self.scanner.advance();
                 }
                 Some('/') if self.scanner.peek_ahead(1) == Some('/') => {

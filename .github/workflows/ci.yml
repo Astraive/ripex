@@ -228,11 +228,8 @@ jobs:
               echo "::error::Missing committed corpus directory: $corpus_dir"
               exit 1
             fi
-            seeds=("$corpus_dir"/*)
-            if [[ ${#seeds[@]} -gt 0 ]]; then
-              echo "Replaying $target seeds: ${seeds[*]}"
-              CARGOFLAGS=--locked cargo +nightly fuzz run "$target" "${seeds[@]}" -- -runs=1
-            fi
+            echo "Replaying $target corpus directory $corpus_dir"
+            CARGOFLAGS=--locked cargo +nightly fuzz run "$target" "$corpus_dir" -- -runs=1
           done
   fuzz:
     name: Fuzz (advisory crash / hang hunting)

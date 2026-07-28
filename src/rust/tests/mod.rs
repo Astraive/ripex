@@ -230,3 +230,18 @@ fn malformed_function_head_never_panics() {
         );
     }
 }
+
+#[test]
+fn fuzzed_empty_callee_never_panics() {
+    for (language, parser) in crate::registry() {
+        let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let result = parser.parse("nn\0` \r{in8\n");
+            let _ = parser.extract(&result);
+            let _ = parser.extract_best_effort(&result);
+        }));
+        assert!(
+            parsed.is_ok(),
+            "{language} parser panicked on a fuzzed empty-callee input"
+        );
+    }
+}

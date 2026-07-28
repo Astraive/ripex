@@ -727,20 +727,22 @@ fn push_calls_for_expr(
         }
         Expr::New(new) => {
             let callee_text = expr_name(new.callee, arena).unwrap_or_else(|| "unknown".into());
-            calls.push(
-                ParsedCall::builder(CallKind::ConstructorCall, callee_text)
-                    .pos(new.span.start.line, new.span.start.column)
-                    .type_args(call_type_args(new.callee, arena))
-                    .build(),
-            );
+            if let Ok(fact) = ParsedCall::builder(CallKind::ConstructorCall, callee_text)
+                .pos(new.span.start.line, new.span.start.column)
+                .type_args(call_type_args(new.callee, arena))
+                .try_build()
+            {
+                calls.push(fact);
+            }
         }
         Expr::TaggedTemplate(tagged) => {
             let callee_text = expr_name(tagged.tag, arena).unwrap_or_else(|| "unknown".into());
-            calls.push(
-                ParsedCall::builder(CallKind::FunctionCall, callee_text)
-                    .pos(tagged.span.start.line, tagged.span.start.column)
-                    .build(),
-            );
+            if let Ok(fact) = ParsedCall::builder(CallKind::FunctionCall, callee_text)
+                .pos(tagged.span.start.line, tagged.span.start.column)
+                .try_build()
+            {
+                calls.push(fact);
+            }
         }
         // A pipeline's body is the function applied to the input. A concrete
         // call in the body has its own arena node, so emit a synthetic fact
@@ -752,17 +754,18 @@ fn push_calls_for_expr(
             ) =>
         {
             let (kind, name) = resolve_callee(p.body, arena);
-            calls.push(
-                ParsedCall::builder(kind, name)
-                    .pos(
-                        arena[p.body].span().start.line,
-                        arena[p.body].span().start.column,
-                    )
-                    .await_(is_await)
-                    .optional(callee_is_optional(p.body, arena))
-                    .type_args(call_type_args(p.body, arena))
-                    .build(),
-            );
+            if let Ok(fact) = ParsedCall::builder(kind, name)
+                .pos(
+                    arena[p.body].span().start.line,
+                    arena[p.body].span().start.column,
+                )
+                .await_(is_await)
+                .optional(callee_is_optional(p.body, arena))
+                .type_args(call_type_args(p.body, arena))
+                .try_build()
+            {
+                calls.push(fact);
+            }
         }
         _ => {}
     }

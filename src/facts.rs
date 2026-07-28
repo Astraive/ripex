@@ -183,6 +183,16 @@ pub enum ImportSpecifierKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ParsedParam {
+    pub name: String,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub type_annotation: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParsedSymbol {
     pub kind: SymbolKind,
     pub name: String,
@@ -210,6 +220,10 @@ pub struct ParsedSymbol {
     pub base_classes: Vec<String>,
     // NEW: type info
     pub type_kind: TypeKind,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub doc_string: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub params: Vec<ParsedParam>,
 }
 
 impl ParsedSymbol {
@@ -239,6 +253,8 @@ impl ParsedSymbol {
                 attributes: Vec::new(),
                 base_classes: Vec::new(),
                 type_kind: TypeKind::Unknown,
+                doc_string: None,
+                params: Vec::new(),
             },
         }
     }
@@ -308,6 +324,14 @@ impl SymbolBuilder {
     }
     pub fn type_kind(mut self, t: TypeKind) -> Self {
         self.inner.type_kind = t;
+        self
+    }
+    pub fn doc_string(mut self, d: Option<String>) -> Self {
+        self.inner.doc_string = d;
+        self
+    }
+    pub fn params(mut self, p: Vec<ParsedParam>) -> Self {
+        self.inner.params = p;
         self
     }
     pub fn build(self) -> ParsedSymbol {

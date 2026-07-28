@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use ripex::{parser_for, parser_for_ext, LanguageParser};
+use ripex::{parser_for, parser_for_ext};
 
 fuzz_target!(|data: &[u8]| {
     let source = String::from_utf8_lossy(data);
@@ -16,5 +16,6 @@ fuzz_target!(|data: &[u8]| {
     for parser in parsers.into_iter().flatten() {
         let result = parser.parse(&source);
         let _ = parser.extract(&result);
+        let _ = parser.extract_best_effort(&result);
     }
 });

@@ -12,5 +12,6 @@ fuzz_target!(|data: &[u8]| {
     for (_id, parser) in parsers {
         let result = parser.parse(&source);
         let _ = parser.extract(&result);
+        let _ = parser.extract_best_effort(&result);
     }
 });

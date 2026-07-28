@@ -460,7 +460,9 @@ fn calls_from_expr(expr: &Expr) -> Vec<ParsedCall> {
             if let Some(obj) = object {
                 builder = builder.object(obj);
             }
-            calls.push(builder.build());
+            if let Ok(call) = builder.try_build() {
+                calls.push(call);
+            }
         }
         Expr::Binary(l, _, r, _) => {
             calls.extend(calls_from_expr(l));

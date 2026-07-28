@@ -472,25 +472,29 @@ fn walk_expr_for_calls_from_type_ann(ann: &Option<Box<Expr>>, calls: &mut Vec<Pa
 fn extract_call(func: &Expr, span: &crate::span::Span, calls: &mut Vec<ParsedCall>) {
     match func {
         Expr::Ident(name, _) => {
-            let call = ParsedCall::builder(CallKind::FunctionCall, name.as_str())
+            if let Ok(call) = ParsedCall::builder(CallKind::FunctionCall, name.as_str())
                 .pos(span.start.line, span.start.column)
-                .build();
-            calls.push(call);
+                .try_build()
+            {
+                calls.push(call);
+            }
         }
         Expr::Attribute(obj, attr, _) => {
             let object_str = expr_to_string(obj);
-            let call = ParsedCall::builder(CallKind::MethodCall, attr.as_str())
+            if let Ok(call) = ParsedCall::builder(CallKind::MethodCall, attr.as_str())
                 .object(object_str)
                 .pos(span.start.line, span.start.column)
-                .build();
-            calls.push(call);
+                .try_build()
+            {
+                calls.push(call);
+            }
         }
         _ => {
             let text = expr_to_string(func);
-            if !text.is_empty() {
-                let call = ParsedCall::builder(CallKind::FunctionCall, text)
-                    .pos(span.start.line, span.start.column)
-                    .build();
+            if let Ok(call) = ParsedCall::builder(CallKind::FunctionCall, text)
+                .pos(span.start.line, span.start.column)
+                .try_build()
+            {
                 calls.push(call);
             }
         }

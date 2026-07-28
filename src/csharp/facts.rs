@@ -643,7 +643,9 @@ fn walk_expr_for_calls(expr: &Expr, calls: &mut Vec<ParsedCall>) {
             if let Some(obj) = &object {
                 builder = builder.object(obj);
             }
-            calls.push(builder.build());
+            if let Ok(call) = builder.try_build() {
+                calls.push(call);
+            }
             walk_expr_for_calls(callee, calls);
             for arg in args {
                 walk_expr_for_calls(arg, calls);

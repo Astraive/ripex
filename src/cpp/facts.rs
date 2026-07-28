@@ -387,8 +387,9 @@ fn walk_expr(expr: &Expr, result: &mut ExtractionResult) {
                 builder = builder.object(obj);
             }
 
-            result.calls.push(builder.build());
-
+            if let Ok(call) = builder.try_build() {
+                result.calls.push(call);
+            }
             for arg in args {
                 walk_expr(arg, result);
             }
@@ -435,11 +436,12 @@ fn walk_expr(expr: &Expr, result: &mut ExtractionResult) {
         Expr::New(e, args, span) => {
             let type_name = expr_to_string(e);
             if !type_name.is_empty() {
-                result.calls.push(
-                    ParsedCall::builder(CallKind::ConstructorCall, &type_name)
-                        .pos(span.start.line, span.start.column)
-                        .build(),
-                );
+                if let Ok(call) = ParsedCall::builder(CallKind::ConstructorCall, &type_name)
+                    .pos(span.start.line, span.start.column)
+                    .try_build()
+                {
+                    result.calls.push(call);
+                }
             }
             walk_expr(e, result);
             for arg in args {

@@ -483,7 +483,12 @@ fn convert_use_path(path: &ast::UsePath, imports: &mut Vec<facts::ParsedImport>,
         }
     }
 
-    fn emit(path: &ast::UsePath, prefix: &str, imports: &mut Vec<facts::ParsedImport>, line: usize) {
+    fn emit(
+        path: &ast::UsePath,
+        prefix: &str,
+        imports: &mut Vec<facts::ParsedImport>,
+        line: usize,
+    ) {
         match path {
             ast::UsePath::Simple(name, _) => {
                 let source = join(prefix, name);

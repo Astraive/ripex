@@ -10,6 +10,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 
+#[allow(unused_imports)]
 use ripex::{
     compiler::{check_with_compiler, CheckStatus, CompilerCheckOptions},
     detect_language, parser_for_language, registry, ExtractionResult, Language, ParseResult,
@@ -207,7 +208,10 @@ fn run_check(request: CheckRequest) -> anyhow::Result<()> {
         anyhow::Error::new(CliFailure::new(
             code,
             "check_planning",
-            format!("could not compiler-check {}: {error}", request.path.display()),
+            format!(
+                "could not compiler-check {}: {error}",
+                request.path.display()
+            ),
             2,
         ))
     })?;
@@ -364,7 +368,10 @@ fn run_parse(
     facts: bool,
 ) -> anyhow::Result<()> {
     let source = read_source(path)?;
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
     let language = match lang {
         Some(id) => Language::from_id(id).ok_or_else(|| {
             anyhow::Error::new(CliFailure::new(

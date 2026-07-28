@@ -496,7 +496,9 @@ impl Parser {
         self.expect(TokenKind::Exclamation);
         let body = match self.peek() {
             TokenKind::LParen => self.parse_delimited_group(TokenKind::LParen, TokenKind::RParen),
-            TokenKind::LBracket => self.parse_delimited_group(TokenKind::LBracket, TokenKind::RBracket),
+            TokenKind::LBracket => {
+                self.parse_delimited_group(TokenKind::LBracket, TokenKind::RBracket)
+            }
             TokenKind::LBrace => self.parse_delimited_group(TokenKind::LBrace, TokenKind::RBrace),
             _ => String::new(),
         };

@@ -170,6 +170,7 @@ impl ParseStatus {
     }
 }
 
+#[allow(dead_code)]
 fn status_from_errors(errors: &[diagnostics::ParseError]) -> ParseStatus {
     if errors.is_empty() {
         ParseStatus::Complete
@@ -239,9 +240,7 @@ pub trait LanguageParser: Send + Sync {
     fn extract_unchecked(&self, result: &ParseResult) -> ExtractionResult;
 
     fn validate_result(&self, result: &ParseResult) -> Result<(), ExtractionError> {
-        if result.language != self.language()
-            || result.parser_mode != self.parser_mode()
-        {
+        if result.language != self.language() || result.parser_mode != self.parser_mode() {
             return Err(ExtractionError::ParserMismatch {
                 expected_language: self.language(),
                 actual_language: result.language,
@@ -334,6 +333,16 @@ pub enum Program {
     Cpp(cpp::Program),
     #[cfg(feature = "lang-csharp")]
     CSharp(csharp::Program),
+    #[cfg(not(any(
+        feature = "lang-js",
+        feature = "lang-python",
+        feature = "lang-go",
+        feature = "lang-rust",
+        feature = "lang-c",
+        feature = "lang-cpp",
+        feature = "lang-csharp"
+    )))]
+    None,
 }
 
 /// Select a parser by an explicit language and an optional compatible
@@ -343,9 +352,10 @@ pub fn parser_for_language(
     language: Language,
     extension: Option<&str>,
 ) -> Option<Box<dyn LanguageParser>> {
-    #[cfg(not(feature = "lang-js"))]
-    let _ = &extension;
+    #[cfg(feature = "lang-js")]
     let extension = extension.map(normalized_extension);
+    #[cfg(not(feature = "lang-js"))]
+    let _ = extension;
     match language {
         #[cfg(feature = "lang-js")]
         Language::JavaScript => {
@@ -400,7 +410,10 @@ pub fn parser_for_language_ext(
 /// Returns a parser for `language_id` with an optional compatible extension.
 pub fn parser_for_ext(language_id: &str, extension: &str) -> Option<Box<dyn LanguageParser>> {
     let language = Language::from_id(language_id)?;
-    parser_for_language(language, (!extension.trim().is_empty()).then_some(extension))
+    parser_for_language(
+        language,
+        (!extension.trim().is_empty()).then_some(extension),
+    )
 }
 
 pub fn parser_for(language_id: &str) -> Option<Box<dyn LanguageParser>> {

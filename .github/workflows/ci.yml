@@ -181,21 +181,21 @@ jobs:
         run: cargo build --locked --all-features
 
       - name: Check C17 corpus
-        run: target/debug/ripex check tests/lang-test/c --lang c
+        run: target/debug/ripex check tests/lang-test/c --lang c --trusted-project
       - name: Check C++20 corpus
-        run: target/debug/ripex check tests/lang-test/cpp --lang cpp
+        run: target/debug/ripex check tests/lang-test/cpp --lang cpp --trusted-project
       - name: Check C# project
-        run: target/debug/ripex check tests/lang-test/csharp
+        run: target/debug/ripex check tests/lang-test/csharp --trusted-project
       - name: Check Go project
-        run: target/debug/ripex check tests/lang-test/go
+        run: target/debug/ripex check tests/lang-test/go --trusted-project
       - name: Check JavaScript project
-        run: target/debug/ripex check tests/lang-test/javascript/src --lang javascript
+        run: target/debug/ripex check tests/lang-test/javascript/src --lang javascript --trusted-project
       - name: Check TypeScript project
-        run: target/debug/ripex check tests/lang-test/javascript/tsconfig.json
+        run: target/debug/ripex check tests/lang-test/javascript/tsconfig.json --trusted-project
       - name: Check strict Python project
-        run: target/debug/ripex check tests/lang-test/python/src --lang python
+        run: target/debug/ripex check tests/lang-test/python/src --lang python --trusted-project
       - name: Check Rust project
-        run: target/debug/ripex check tests/lang-test/rust
+        run: target/debug/ripex check tests/lang-test/rust --trusted-project
 
   fuzz-replay:
     name: Fuzz corpus replay (deterministic)

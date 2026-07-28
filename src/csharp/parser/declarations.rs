@@ -16,5 +16,4 @@ impl Parser {
             self.peek_token().span,
         )
     }
-
 }

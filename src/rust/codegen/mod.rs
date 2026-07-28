@@ -26,10 +26,7 @@ impl Codegen {
         }
     }
 
-    pub fn generate(
-        &mut self,
-        program: &Program,
-    ) -> Result<String, GenerationError> {
+    pub fn generate(&mut self, program: &Program) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
         self.error = None;
@@ -558,7 +555,9 @@ impl Codegen {
                     }
                     self.output.push_str("; ");
                 }
-            Stmt::Item(_, _) | Stmt::Empty(_) => self.unsupported("unsupported inline statement"),
+                Stmt::Item(_, _) | Stmt::Empty(_) => {
+                    self.unsupported("unsupported inline statement")
+                }
             }
         }
         self.output.push('}');

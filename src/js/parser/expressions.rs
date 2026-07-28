@@ -612,7 +612,6 @@ fn parse_prefix_chain(parser: &mut Parser) -> ExprRef {
     expression
 }
 
-
 fn parse_postfix_update(parser: &mut Parser, left: ExprRef) -> ExprRef {
     let tok = parser.advance();
     let op = match tok.kind {

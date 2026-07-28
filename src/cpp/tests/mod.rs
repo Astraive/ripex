@@ -138,9 +138,21 @@ Widget* make() {
 "#;
     let (program, _errors) = parse_program(src);
     let result = extract_facts(&program);
-    let imports: Vec<&str> = result.imports.iter().map(|item| item.source.as_str()).collect();
-    assert!(imports.contains(&"widget.hpp"), "quoted include missing: {:?}", imports);
-    assert!(imports.contains(&"vector"), "system include missing: {:?}", imports);
+    let imports: Vec<&str> = result
+        .imports
+        .iter()
+        .map(|item| item.source.as_str())
+        .collect();
+    assert!(
+        imports.contains(&"widget.hpp"),
+        "quoted include missing: {:?}",
+        imports
+    );
+    assert!(
+        imports.contains(&"vector"),
+        "system include missing: {:?}",
+        imports
+    );
     assert!(
         result
             .calls

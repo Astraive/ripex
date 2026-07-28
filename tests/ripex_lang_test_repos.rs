@@ -1,3 +1,12 @@
+#![cfg(any(
+    feature = "lang-c",
+    feature = "lang-cpp",
+    feature = "lang-csharp",
+    feature = "lang-go",
+    feature = "lang-js",
+    feature = "lang-python",
+    feature = "lang-rust"
+))]
 //! End-to-end corpus test for ripex.
 //!
 //! Walks every source file in `tests/lang-test/`, parsing + extracting facts with
@@ -114,16 +123,12 @@ fn try_file(path: &Path, lang_static: &'static str, ext: &str) -> Option<FileRes
         return None; // defensive: above the documented input-size panic threshold
     }
 
+    let parser = parser_for_ext(lang_static, ext)?;
+
     let (tx, rx) = mpsc::channel();
-    let lang = lang_static.to_string();
-    let lang_for_file = lang.clone();
-    let ext = ext.to_string();
+    let lang_for_file = lang_static.to_string();
     std::thread::spawn(move || {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let parser = match parser_for_ext(&lang, &ext) {
-                Some(p) => p,
-                None => return,
-            };
             let pr: ParseResult = parser.parse(&src);
             let ex: ExtractionResult = parser
                 .extract_best_effort(&pr)
@@ -189,7 +194,6 @@ fn try_file(path: &Path, lang_static: &'static str, ext: &str) -> Option<FileRes
 fn end_to_end_ripex_lang_test() {
     let root = corpus_root();
     assert!(root.exists(), "corpus not found at {}", root.display());
-
     let mut stat: BTreeMap<String, LangStat> = BTreeMap::new();
     let mut files: Vec<FileResult> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();

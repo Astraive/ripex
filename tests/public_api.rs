@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use ripex::{detect_language, parser_for_ext, CommentKind, Language};
 
 #[test]
@@ -18,7 +19,6 @@ fn detects_all_documented_extensions_case_insensitively() {
         assert_eq!(detect_language(path), Some(expected), "{path}");
     }
     assert_eq!(detect_language("header.h"), None);
-
 }
 
 #[cfg(feature = "lang-js")]

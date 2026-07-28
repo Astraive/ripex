@@ -80,7 +80,6 @@ pub enum CheckStatus {
     OutputLimit,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
@@ -170,9 +169,7 @@ pub fn plan_compiler_check(
             format!("check target does not exist: {}", path.display()),
         ));
     }
-    if !options.extra_args.is_empty()
-        && (!options.trusted_project || !options.allow_unsafe_args)
-    {
+    if !options.extra_args.is_empty() && (!options.trusted_project || !options.allow_unsafe_args) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             "raw compiler arguments require trusted_project and allow_unsafe_args",
@@ -513,7 +510,9 @@ pub fn plan_compiler_check(
                 plans.push(invocation(
                     CheckStageKind::Compile,
                     "javac",
-                    override_candidate.clone().unwrap_or_else(|| vec![vec!["javac".into()]]),
+                    override_candidate
+                        .clone()
+                        .unwrap_or_else(|| vec![vec!["javac".into()]]),
                     args,
                     cwd.clone(),
                 ));
@@ -526,7 +525,9 @@ pub fn plan_compiler_check(
                 plans.push(invocation(
                     CheckStageKind::Compile,
                     "kotlinc",
-                    override_candidate.clone().unwrap_or_else(|| vec![vec!["kotlinc".into()]]),
+                    override_candidate
+                        .clone()
+                        .unwrap_or_else(|| vec![vec!["kotlinc".into()]]),
                     args,
                     cwd.clone(),
                 ));
@@ -539,7 +540,9 @@ pub fn plan_compiler_check(
                 plans.push(invocation(
                     CheckStageKind::Compile,
                     "swiftc",
-                    override_candidate.clone().unwrap_or_else(|| vec![vec!["swiftc".into()]]),
+                    override_candidate
+                        .clone()
+                        .unwrap_or_else(|| vec![vec!["swiftc".into()]]),
                     args,
                     cwd.clone(),
                 ));
@@ -1057,7 +1060,11 @@ fn read_bounded_file(path: &Path, max_bytes: usize) -> io::Result<String> {
     if bytes.len() > max_bytes {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("file {} exceeds its {} byte budget", path.display(), max_bytes),
+            format!(
+                "file {} exceeds its {} byte budget",
+                path.display(),
+                max_bytes
+            ),
         ));
     }
     String::from_utf8(bytes).map_err(|error| {
@@ -1564,7 +1571,11 @@ fn csharp_project(path: &Path, enabled: bool) -> io::Result<Option<PathBuf>> {
     if !enabled && !path.is_dir() {
         return Ok(None);
     }
-    let Some(start) = (if path.is_dir() { Some(path) } else { path.parent() }) else {
+    let Some(start) = (if path.is_dir() {
+        Some(path)
+    } else {
+        path.parent()
+    }) else {
         return Ok(None);
     };
     for directory in start.ancestors().take(MAX_DISCOVERY_DEPTH + 1) {
@@ -1577,10 +1588,7 @@ fn csharp_project(path: &Path, enabled: bool) -> io::Result<Option<PathBuf>> {
         if projects.len() > 1 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!(
-                    "ambiguous C# project selection in {}",
-                    directory.display()
-                ),
+                format!("ambiguous C# project selection in {}", directory.display()),
             ));
         }
         if let Some(project) = projects.pop() {

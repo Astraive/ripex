@@ -292,12 +292,12 @@ fn extract_func_symbol(
         .iter()
         .map(|arg| ParsedParam {
             name: arg.name.clone(),
-            type_annotation: arg.type_ann.as_ref().map(|ann| expr_to_string(ann)),
+            type_annotation: arg.type_ann.as_deref().map(expr_to_string),
             default_value: None,
         })
         .collect();
 
-    let attributes: Vec<String> = fd.decorators.iter().map(|d| expr_to_string(d)).collect();
+    let attributes: Vec<String> = fd.decorators.iter().map(expr_to_string).collect();
 
     let sig_params = params
         .iter()

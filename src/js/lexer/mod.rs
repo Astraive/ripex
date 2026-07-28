@@ -105,7 +105,6 @@ impl<'a> Lexer<'a> {
         &self.comments
     }
 
-
     fn skip_trivia(&mut self) {
         loop {
             self.scanner.reset_line_break();

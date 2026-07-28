@@ -390,8 +390,7 @@ impl Parser {
     }
     fn set_decl_visibility(decl: &mut Decl, visibility: Visibility) {
         match decl {
-            Decl::Class(d, _)
-            | Decl::Record(d, _) => d.visibility = visibility,
+            Decl::Class(d, _) | Decl::Record(d, _) => d.visibility = visibility,
             Decl::Struct(d, _) => d.visibility = visibility,
             Decl::Interface(d, _) => d.visibility = visibility,
             Decl::Enum(d, _) => d.visibility = visibility,
@@ -400,7 +399,6 @@ impl Parser {
             _ => {}
         }
     }
-
 
     fn set_decl_modifiers(
         decl: &mut Decl,

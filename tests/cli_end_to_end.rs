@@ -3,6 +3,7 @@
 use std::process::Command;
 use std::{fs, path::PathBuf};
 
+#[cfg(feature = "lang-js")]
 #[test]
 fn tsx_fixture_is_clean_through_the_cli() {
     let fixture = format!(
@@ -32,6 +33,7 @@ fn tsx_fixture_is_clean_through_the_cli() {
     assert_eq!(json["ast"]["kind"], "javascript_module");
 }
 
+#[cfg(feature = "lang-js")]
 #[test]
 fn javascript_comments_are_preserved_in_cli_json() {
     let path = std::env::temp_dir().join(format!("ripex-cli-comments-{}.mjs", std::process::id()));
@@ -121,11 +123,7 @@ fn missing_file_json_is_a_single_error_envelope() {
         std::thread::current().name().unwrap_or("test")
     ));
     let output = Command::new(env!("CARGO_BIN_EXE_ripex"))
-        .args([
-            "parse",
-            path.to_str().unwrap(),
-            "--json",
-        ])
+        .args(["parse", path.to_str().unwrap(), "--json"])
         .output()
         .expect("run ripex CLI");
 
@@ -141,11 +139,15 @@ fn missing_file_json_is_a_single_error_envelope() {
     assert!(!String::from_utf8_lossy(&output.stdout).contains("ripex:"));
 }
 
+#[cfg(feature = "lang-js")]
 #[test]
 fn explicit_typescript_mode_overrides_javascript_extension() {
-    let path =
-        std::env::temp_dir().join(format!("ripex-cli-ts-on-js-{}.js", std::process::id()));
-    fs::write(&path, "interface Generated { value: number }\nconst value: number = 1;").unwrap();
+    let path = std::env::temp_dir().join(format!("ripex-cli-ts-on-js-{}.js", std::process::id()));
+    fs::write(
+        &path,
+        "interface Generated { value: number }\nconst value: number = 1;",
+    )
+    .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_ripex"))
         .args([
             "parse",
@@ -158,7 +160,11 @@ fn explicit_typescript_mode_overrides_javascript_extension() {
         .expect("run ripex CLI");
     let _ = fs::remove_file(&path);
 
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("forced TypeScript JSON");
     assert_eq!(json["schema_version"], 2);
@@ -170,6 +176,7 @@ fn explicit_typescript_mode_overrides_javascript_extension() {
         .contains("typescript"));
 }
 
+#[cfg(feature = "lang-js")]
 #[test]
 fn parse_json_omits_optional_ast_but_reports_status_and_mode() {
     let path = std::env::temp_dir().join(format!("ripex-cli-status-{}.js", std::process::id()));
@@ -181,8 +188,7 @@ fn parse_json_omits_optional_ast_but_reports_status_and_mode() {
     let _ = fs::remove_file(&path);
 
     assert!(output.status.success());
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("status JSON");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("status JSON");
     assert_eq!(json["schema_version"], 2);
     assert_eq!(json["status"], "complete");
     assert_eq!(json["completeness"], "complete");
@@ -191,6 +197,7 @@ fn parse_json_omits_optional_ast_but_reports_status_and_mode() {
     assert_eq!(json["trust"]["trusted_project"], false);
 }
 
+#[cfg(feature = "lang-js")]
 #[test]
 fn over_limit_input_is_rejected_before_parse() {
     let path = std::env::temp_dir().join(format!("ripex-cli-too-large-{}.js", std::process::id()));
@@ -203,7 +210,6 @@ fn over_limit_input_is_rejected_before_parse() {
     let _ = fs::remove_file(&path);
 
     assert_eq!(output.status.code(), Some(1));
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("input-limit JSON");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("input-limit JSON");
     assert_eq!(json["error"]["code"], "input_too_large");
 }

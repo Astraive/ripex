@@ -1,6 +1,7 @@
 //! Code generators are stateful for efficiency, but each `generate` call must
 //! produce output for only the supplied program.
 
+#[allow(dead_code)]
 fn is_generated_or_dependency_dir(path: &std::path::Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
@@ -14,13 +15,9 @@ fn c_codegen_can_be_reused() {
     let (program, errors) = ripex::c::parse_program("int main() { return 0; }");
     assert!(errors.is_empty());
     let mut codegen = ripex::c::codegen::Codegen::new();
-    let first = codegen
-        .generate(&program)
-        .expect("canonical C generation");
+    let first = codegen.generate(&program).expect("canonical C generation");
     assert_eq!(
-        codegen
-            .generate(&program)
-            .expect("canonical C generation"),
+        codegen.generate(&program).expect("canonical C generation"),
         first
     );
 }
@@ -154,13 +151,9 @@ fn csharp_codegen_can_be_reused() {
     let (program, errors) = ripex::csharp::parse_program("class App { }");
     assert!(errors.is_empty());
     let mut codegen = ripex::csharp::codegen::Codegen::new();
-    let first = codegen
-        .generate(&program)
-        .expect("canonical C# generation");
+    let first = codegen.generate(&program).expect("canonical C# generation");
     assert_eq!(
-        codegen
-            .generate(&program)
-            .expect("canonical C# generation"),
+        codegen.generate(&program).expect("canonical C# generation"),
         first
     );
 }
@@ -225,13 +218,9 @@ fn go_codegen_can_be_reused() {
     let (program, errors) = ripex::go::parse_program("package main\nfunc main() {}");
     assert!(errors.is_empty());
     let mut codegen = ripex::go::codegen::Codegen::new();
-    let first = codegen
-        .generate(&program)
-        .expect("canonical Go generation");
+    let first = codegen.generate(&program).expect("canonical Go generation");
     assert_eq!(
-        codegen
-            .generate(&program)
-            .expect("canonical Go generation"),
+        codegen.generate(&program).expect("canonical Go generation"),
         first
     );
 }

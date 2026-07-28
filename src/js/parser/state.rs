@@ -174,28 +174,45 @@ impl<'a> Parser<'a> {
     }
 
     pub fn token_at(&self, i: usize) -> &Token {
-        &self.tokens[i]
+        if i < self.tokens.len() {
+            &self.tokens[i]
+        } else if let Some(last) = self.tokens.last() {
+            last
+        } else {
+            static EOF_TOKEN: std::sync::LazyLock<Token> =
+                std::sync::LazyLock::new(|| Token::new(TokenKind::Eof, Span::ZERO));
+            &EOF_TOKEN
+        }
     }
 
     pub fn span_since(&self, start: usize) -> Span {
+        if self.tokens.is_empty() {
+            return Span::ZERO;
+        }
+        let start_idx = start.min(self.tokens.len() - 1);
+        let start_pos = self.tokens[start_idx].span.start;
         let end_pos = if self.pos > 0 {
-            self.tokens[self.pos - 1].span.end
+            let end_idx = (self.pos - 1).min(self.tokens.len() - 1);
+            self.tokens[end_idx].span.end
         } else {
-            self.tokens[start].span.start
+            start_pos
         };
-        Span::new(self.tokens[start].span.start, end_pos)
+        Span::new(start_pos, end_pos)
     }
 
     pub fn span_between(&self, start: usize, end: usize) -> Span {
-        let s = self.tokens[start].span.start;
-        let e = if end > 0 && end < self.tokens.len() {
-            self.tokens[end - 1].span.end
-        } else if !self.tokens.is_empty() {
-            self.tokens[self.tokens.len() - 1].span.end
+        if self.tokens.is_empty() {
+            return Span::ZERO;
+        }
+        let start_idx = start.min(self.tokens.len() - 1);
+        let start_pos = self.tokens[start_idx].span.start;
+        let end_pos = if end > 0 {
+            let end_idx = (end - 1).min(self.tokens.len() - 1);
+            self.tokens[end_idx].span.end
         } else {
-            s
+            start_pos
         };
-        Span::new(s, e)
+        Span::new(start_pos, end_pos)
     }
 
     pub fn error(&mut self, code: DiagnosticCode, t: &Token) -> ParseError {

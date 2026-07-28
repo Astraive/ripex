@@ -334,6 +334,10 @@ impl SymbolBuilder {
         self.inner.params = p;
         self
     }
+    pub fn attributes(mut self, attrs: Vec<String>) -> Self {
+        self.inner.attributes = attrs;
+        self
+    }
     pub fn build(self) -> ParsedSymbol {
         self.inner
     }

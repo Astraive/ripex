@@ -287,6 +287,41 @@ fn extract_func_symbol(
         SymbolKind::Function
     };
 
+    let params: Vec<ParsedParam> = fd
+        .args
+        .iter()
+        .map(|arg| ParsedParam {
+            name: arg.name.clone(),
+            type_annotation: arg.type_ann.as_ref().map(|ann| expr_to_string(ann)),
+            default_value: None,
+        })
+        .collect();
+
+    let attributes: Vec<String> = fd.decorators.iter().map(|d| expr_to_string(d)).collect();
+
+    let sig_params = params
+        .iter()
+        .map(|p| {
+            if let Some(ref t) = p.type_annotation {
+                format!("{}: {}", p.name, t)
+            } else {
+                p.name.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let signature = if let Some(ref ret) = return_type {
+        format!("def {}({}) -> {}", fd.name, sig_params, ret)
+    } else {
+        format!("def {}({})", fd.name, sig_params)
+    };
+
+    let doc_string = fd.body.first().and_then(|stmt| match stmt {
+        Stmt::Expr(Expr::Literal(Literal::String(s, _, _), _), _) => Some(s.clone()),
+        _ => None,
+    });
+
     let sym = ParsedSymbol::builder(kind, &fd.name)
         .lines(span.start.line, span.end.line)
         .exported(true)
@@ -295,6 +330,10 @@ fn extract_func_symbol(
         .return_type(return_type)
         .constructor(is_constructor)
         .destructor(is_destructor)
+        .params(params)
+        .signature(signature)
+        .doc_string(doc_string)
+        .attributes(attributes)
         .build();
     symbols.push(sym);
 }

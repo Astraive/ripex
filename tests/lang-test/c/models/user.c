@@ -4,10 +4,19 @@
 #include <string.h>
 #include <stdio.h>
 
+static char* c_strdup(const char* s) {
+    size_t len = strlen(s) + 1;
+    char* dup = (char*)malloc(len);
+    if (dup) {
+        memcpy(dup, s, len);
+    }
+    return dup;
+}
+
 User* user_new(const char* name, const char* email) {
     User* u = (User*)malloc(sizeof(User));
-    u->name = strdup(name);
-    u->email = strdup(email);
+    u->name = c_strdup(name);
+    u->email = c_strdup(email);
     u->roles = NULL;
     u->role_count = 0;
     return u;

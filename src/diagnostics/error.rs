@@ -30,13 +30,17 @@ impl ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} at {}: {}",
-            self.code.message(),
-            self.span,
-            self.message
-        )
+        if self.message == self.code.message() {
+            write!(f, "{} at {}", self.code.message(), self.span)
+        } else {
+            write!(
+                f,
+                "{} at {}: {}",
+                self.code.message(),
+                self.span,
+                self.message
+            )
+        }
     }
 }
 

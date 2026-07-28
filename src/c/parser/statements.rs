@@ -57,41 +57,84 @@ impl Parser {
             }
             TokenKind::Hash => {
                 let directive = self.advance();
-                let name = if directive.value.is_empty() && self.peek() == TokenKind::Ident {
-                    self.expect_ident()
-                } else {
-                    directive.value
-                };
-                if !name.is_empty() {
-                    if name == "include" {
-                        let path = self.parse_preproc_path();
+                let name = directive.value;
+                let span_start = start;
+                let directive = match name.as_str() {
+                    "include" => {
+                        let path = self
+                            .parse_preproc_path()
+                            .trim()
+                            .trim_start_matches('<')
+                            .trim_end_matches('>')
+                            .trim_matches('"')
+                            .to_string();
                         self.finish_preprocessor_line();
-                        Stmt::Preprocessor(
-                            PreprocDirective::Include(path, Span::new(start, self.prev_end())),
-                            Span::new(start, self.prev_end()),
-                        )
-                    } else if name == "define" {
-                        let macro_name = self.expect_ident();
-                        let mut body = String::new();
-                        while self.peek() != TokenKind::Newline && self.peek() != TokenKind::Eof {
-                            body.push_str(&self.advance().value);
-                        }
-                        Stmt::Preprocessor(
-                            PreprocDirective::Define(
-                                macro_name,
-                                Some(body),
-                                Span::new(start, self.prev_end()),
-                            ),
-                            Span::new(start, self.prev_end()),
-                        )
-                    } else {
-                        self.finish_preprocessor_line();
-                        Stmt::Empty(Span::ZERO)
+                        PreprocDirective::Include(path, Span::new(span_start, self.prev_end()))
                     }
-                } else {
-                    self.finish_preprocessor_line();
-                    Stmt::Empty(Span::ZERO)
-                }
+                    "define" => {
+                        let macro_name = if self.peek() == TokenKind::Ident {
+                            self.expect_ident()
+                        } else {
+                            String::new()
+                        };
+                        let body = self.parse_preproc_text();
+                        PreprocDirective::Define(
+                            macro_name,
+                            (!body.is_empty()).then_some(body),
+                            Span::new(span_start, self.prev_end()),
+                        )
+                    }
+                    "undef" => {
+                        let symbol = self.parse_preproc_text();
+                        PreprocDirective::Undef(symbol, Span::new(span_start, self.prev_end()))
+                    }
+                    "ifdef" => {
+                        let symbol = self.parse_preproc_text();
+                        PreprocDirective::Ifdef(symbol, Span::new(span_start, self.prev_end()))
+                    }
+                    "ifndef" => {
+                        let symbol = self.parse_preproc_text();
+                        PreprocDirective::Ifndef(symbol, Span::new(span_start, self.prev_end()))
+                    }
+                    "if" => {
+                        let expr = self.parse_preproc_text();
+                        PreprocDirective::If(expr, Span::new(span_start, self.prev_end()))
+                    }
+                    "elif" => {
+                        let expr = self.parse_preproc_text();
+                        PreprocDirective::Elif(expr, Span::new(span_start, self.prev_end()))
+                    }
+                    "else" => {
+                        self.finish_preprocessor_line();
+                        PreprocDirective::Else(Span::new(span_start, self.prev_end()))
+                    }
+                    "endif" => {
+                        self.finish_preprocessor_line();
+                        PreprocDirective::Endif(Span::new(span_start, self.prev_end()))
+                    }
+                    "error" => {
+                        let message = self.parse_preproc_text();
+                        PreprocDirective::Error(message, Span::new(span_start, self.prev_end()))
+                    }
+                    "pragma" => {
+                        let text = self.parse_preproc_text();
+                        PreprocDirective::Pragma(text, Span::new(span_start, self.prev_end()))
+                    }
+                    "line" => {
+                        let text = self.parse_preproc_text();
+                        PreprocDirective::Line(text, Span::new(span_start, self.prev_end()))
+                    }
+                    other => {
+                        let text = self.parse_preproc_text();
+                        let detail = if text.is_empty() {
+                            other.to_string()
+                        } else {
+                            format!("{other} {text}")
+                        };
+                        PreprocDirective::Error(detail, Span::new(span_start, self.prev_end()))
+                    }
+                };
+                Stmt::Preprocessor(directive, Span::new(span_start, self.prev_end()))
             }
             TokenKind::Int
             | TokenKind::Char
@@ -133,33 +176,31 @@ impl Parser {
                     // Function call that looks like a declaration
                     self.pos -= 1; // Push back ident
                     self.parse_declaration()
+                } else if self.peek() == TokenKind::Eq
+                    || self.peek() == TokenKind::PlusEq
+                    || self.peek() == TokenKind::MinusEq
+                    || self.peek() == TokenKind::StarEq
+                    || self.peek() == TokenKind::SlashEq
+                    || self.peek() == TokenKind::PercentEq
+                {
+                    self.advance();
+                    let _val = self.parse_expr();
+                    self.expect(TokenKind::Semicolon);
+                    Stmt::VarDecl(
+                        VarDecl {
+                            type_: Box::new(Expr::Ident("int".to_string(), Span::ZERO)),
+                            name: String::new(),
+                            init: None,
+                            is_const: false,
+                            storage_class: None,
+                            span: Span::ZERO,
+                        },
+                        Span::new(start, self.prev_end()),
+                    )
                 } else {
-                    if self.peek() == TokenKind::Eq
-                        || self.peek() == TokenKind::PlusEq
-                        || self.peek() == TokenKind::MinusEq
-                        || self.peek() == TokenKind::StarEq
-                        || self.peek() == TokenKind::SlashEq
-                        || self.peek() == TokenKind::PercentEq
-                    {
-                        self.advance();
-                        let _val = self.parse_expr();
-                        self.expect(TokenKind::Semicolon);
-                        Stmt::VarDecl(
-                            VarDecl {
-                                type_: Box::new(Expr::Ident("int".to_string(), Span::ZERO)),
-                                name: String::new(),
-                                init: None,
-                                is_const: false,
-                                storage_class: None,
-                                span: Span::ZERO,
-                            },
-                            Span::new(start, self.prev_end()),
-                        )
-                    } else {
-                        self.expect(TokenKind::Semicolon);
-                        let span = expr.span();
-                        Stmt::Expr(expr, span)
-                    }
+                    self.expect(TokenKind::Semicolon);
+                    let span = expr.span();
+                    Stmt::Expr(expr, span)
                 }
             }
         };
@@ -366,6 +407,36 @@ impl Parser {
             path.push_str(text);
         }
         path
+    }
+
+    fn parse_preproc_text(&mut self) -> String {
+        let mut text = String::new();
+        while self.peek() != TokenKind::Newline && self.peek() != TokenKind::Eof {
+            let token = self.advance();
+            let piece = match token.kind {
+                TokenKind::Lt => "<",
+                TokenKind::Gt => ">",
+                TokenKind::Slash => "/",
+                TokenKind::Dot => ".",
+                TokenKind::Comma => ",",
+                TokenKind::Colon => ":",
+                TokenKind::Plus => "+",
+                TokenKind::Minus => "-",
+                TokenKind::Star => "*",
+                TokenKind::Eq => "=",
+                _ => token.value.as_str(),
+            };
+            if !piece.is_empty() {
+                if !text.is_empty() {
+                    text.push(' ');
+                }
+                text.push_str(piece);
+            }
+        }
+        if self.peek() == TokenKind::Newline {
+            self.advance();
+        }
+        text
     }
 
     fn finish_preprocessor_line(&mut self) {

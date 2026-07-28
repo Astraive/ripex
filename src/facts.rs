@@ -388,6 +388,18 @@ impl ImportBuilder {
     }
 }
 
+/// Error returned when a call fact has no semantic callee name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmptyCalleeError;
+
+impl std::fmt::Display for EmptyCalleeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("call callee name must not be empty")
+    }
+}
+
+impl std::error::Error for EmptyCalleeError {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParsedCall {
@@ -444,8 +456,24 @@ impl CallBuilder {
         self.inner.type_args = args;
         self
     }
+    /// Validate and build the call fact.
+    pub fn try_build(self) -> Result<ParsedCall, EmptyCalleeError> {
+        if self.inner.callee_text.trim().is_empty() {
+            Err(EmptyCalleeError)
+        } else {
+            Ok(self.inner)
+        }
+    }
+
+    /// Build a call fact, panicking instead of exposing an empty semantic name.
+    ///
+    /// Extractors should normally use [`Self::try_build`]. This infallible
+    /// compatibility method remains for existing internal builders and makes
+    /// malformed call construction fail immediately rather than fabricating a
+    /// name.
     pub fn build(self) -> ParsedCall {
-        self.inner
+        self.try_build()
+            .expect("call callee name must not be empty")
     }
 }
 

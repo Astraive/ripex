@@ -1,9 +1,12 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use ripex::python;
+use ripex::{parser_for, LanguageParser};
 
 fuzz_target!(|data: &[u8]| {
     let source = String::from_utf8_lossy(data);
-    let (_program, _errors) = python::parser::parse_program(&source);
+    if let Some(parser) = parser_for("python") {
+        let result = parser.parse(&source);
+        let _ = parser.extract(&result);
+    }
 });

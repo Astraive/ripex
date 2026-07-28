@@ -148,3 +148,32 @@ fn test_extract_enum_members() {
         members
     );
 }
+
+#[test]
+fn test_preprocessor_directives_are_retained() {
+    let src = "#include \"config.h\"\n#define ENABLED 1\n#if ENABLED\nint enabled(void) { return 1; }\n#endif\n";
+    let (program, errors) = parse_program(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    assert!(
+        program
+            .decls
+            .iter()
+            .filter(|stmt| matches!(stmt, super::ast::stmt::Stmt::Preprocessor(..)))
+            .count()
+            >= 4,
+        "preprocessor directives were dropped: {:?}",
+        program.decls
+    );
+    let imports = extract_imports(&program);
+    assert!(
+        imports.iter().any(|import| import.source == "config.h"),
+        "include fact missing: {:?}",
+        imports
+    );
+    let symbols = extract_symbols(&program);
+    assert!(
+        !symbols.iter().any(|symbol| symbol.name == "enabled"),
+        "conditional declaration incorrectly reported active: {:?}",
+        symbols
+    );
+}

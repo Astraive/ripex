@@ -55,7 +55,7 @@ impl<'a> Lexer<'a> {
         loop {
             if self.tokens.len() >= crate::limits::MAX_TOKENS {
                 self.errors.push(ParseError::with_message(
-                    DiagnosticCode::InputTooLarge,
+                    DiagnosticCode::TokenLimitExceeded,
                     Span::ZERO,
                     "too many tokens",
                 ));
@@ -151,30 +151,32 @@ impl<'a> Lexer<'a> {
         }
 
         let current = *self.indent_stack.last().unwrap();
-        if indent > current {
-            self.indent_stack.push(indent);
-            let tok = self.make_token(TokenKind::Indent, start);
-            Some(tok)
-        } else if indent < current {
-            // Pop until we find the matching level
-            let mut dedents = 0;
-            while self.indent_stack.len() > 1 && indent < *self.indent_stack.last().unwrap() {
-                self.indent_stack.pop();
-                dedents += 1;
-            }
-            if dedents > 0 {
-                let tok = self.make_token(TokenKind::Dedent, start);
-                // Queue any extra dedents
-                for _ in 1..dedents {
-                    let tok = self.make_token(TokenKind::Dedent, start);
-                    self.pending.push(tok);
-                }
+        match indent.cmp(&current) {
+            std::cmp::Ordering::Greater => {
+                self.indent_stack.push(indent);
+                let tok = self.make_token(TokenKind::Indent, start);
                 Some(tok)
-            } else {
-                None
             }
-        } else {
-            None
+            std::cmp::Ordering::Less => {
+                // Pop until we find the matching level
+                let mut dedents = 0;
+                while self.indent_stack.len() > 1 && indent < *self.indent_stack.last().unwrap() {
+                    self.indent_stack.pop();
+                    dedents += 1;
+                }
+                if dedents > 0 {
+                    let tok = self.make_token(TokenKind::Dedent, start);
+                    // Queue any extra dedents
+                    for _ in 1..dedents {
+                        let tok = self.make_token(TokenKind::Dedent, start);
+                        self.pending.push(tok);
+                    }
+                    Some(tok)
+                } else {
+                    None
+                }
+            }
+            std::cmp::Ordering::Equal => None,
         }
     }
 

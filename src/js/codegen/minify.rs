@@ -1,7 +1,7 @@
 use crate::arena::Arena;
 use crate::js::ast::Program;
 
-use super::printer::Printer;
+use super::printer::{GenerationError, Printer};
 
 pub fn minify(source: &str, _program: &Program) -> String {
     let mut output = String::new();
@@ -118,7 +118,7 @@ pub fn minify(source: &str, _program: &Program) -> String {
     output
 }
 
-pub fn minify_ast(program: &Program) -> String {
+pub fn minify_ast(program: &Program) -> Result<String, GenerationError> {
     let mut ast = Arena::new();
     let mut printer = Printer::new();
     printer.print_program(program, &mut ast)

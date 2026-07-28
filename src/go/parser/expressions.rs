@@ -107,7 +107,7 @@ impl Parser {
         match self.peek() {
             TokenKind::Minus => {
                 self.advance();
-                let expr = self.parse_unary();
+                let expr = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Neg,
                     Box::new(expr.clone()),
@@ -116,7 +116,7 @@ impl Parser {
             }
             TokenKind::Exclamation => {
                 self.advance();
-                let expr = self.parse_unary();
+                let expr = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Not,
                     Box::new(expr.clone()),
@@ -125,7 +125,7 @@ impl Parser {
             }
             TokenKind::Ampersand => {
                 self.advance();
-                let expr = self.parse_unary();
+                let expr = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Ref,
                     Box::new(expr.clone()),
@@ -134,7 +134,7 @@ impl Parser {
             }
             TokenKind::Star => {
                 self.advance();
-                let expr = self.parse_unary();
+                let expr = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Deref,
                     Box::new(expr.clone()),
@@ -143,7 +143,7 @@ impl Parser {
             }
             TokenKind::Arrow => {
                 self.advance();
-                let expr = self.parse_unary();
+                let expr = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Receive,
                     Box::new(expr.clone()),
@@ -152,7 +152,7 @@ impl Parser {
             }
             TokenKind::Plus => {
                 self.advance();
-                let expr = self.parse_unary();
+                let expr = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Plus,
                     Box::new(expr.clone()),
@@ -161,6 +161,14 @@ impl Parser {
             }
             _ => self.parse_primary(),
         }
+    }
+    fn parse_unary_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Ident(String::new(), Span::ZERO);
+        }
+        let expr = self.parse_unary();
+        self.pop_recursion();
+        expr
     }
 
     fn parse_primary(&mut self) -> Expr {

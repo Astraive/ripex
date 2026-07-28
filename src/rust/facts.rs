@@ -473,66 +473,61 @@ fn collect_imports(items: &[ast::Item], imports: &mut Vec<facts::ParsedImport>) 
 }
 
 fn convert_use_path(path: &ast::UsePath, imports: &mut Vec<facts::ParsedImport>, line: usize) {
-    match path {
-        ast::UsePath::Simple(p, _) => {
-            imports.push(
-                facts::ParsedImport::builder(facts::ImportKind::RustUse, p)
-                    .line(line)
-                    .build(),
-            );
+    fn join(prefix: &str, name: &str) -> String {
+        if prefix.is_empty() {
+            name.to_string()
+        } else if name.is_empty() {
+            prefix.to_string()
+        } else {
+            format!("{prefix}::{name}")
         }
-        ast::UsePath::Glob(p, _) => {
-            let source = format!("{p}::*");
-            imports.push(
-                facts::ParsedImport::builder(facts::ImportKind::NamespaceImport, &source)
-                    .line(line)
-                    .star(true)
-                    .build(),
-            );
-        }
-        ast::UsePath::Nested(base, children, _) => {
-            for child in children {
-                match child {
-                    ast::UsePath::Simple(name, _) => {
-                        let full = format!("{base}::{name}");
-                        imports.push(
-                            facts::ParsedImport::builder(facts::ImportKind::RustUse, &full)
-                                .line(line)
-                                .build(),
-                        );
-                    }
-                    ast::UsePath::Glob(_, _) => {
-                        let source = format!("{base}::*");
-                        imports.push(
-                            facts::ParsedImport::builder(
-                                facts::ImportKind::NamespaceImport,
-                                &source,
-                            )
+    }
+
+    fn emit(path: &ast::UsePath, prefix: &str, imports: &mut Vec<facts::ParsedImport>, line: usize) {
+        match path {
+            ast::UsePath::Simple(name, _) => {
+                let source = join(prefix, name);
+                if !source.is_empty() {
+                    imports.push(
+                        facts::ParsedImport::builder(facts::ImportKind::RustUse, &source)
                             .line(line)
-                            .star(true)
                             .build(),
-                        );
-                    }
-                    ast::UsePath::Self_(name, _) => {
-                        let full = format!("{base}::{name}");
-                        imports.push(
-                            facts::ParsedImport::builder(facts::ImportKind::RustUse, &full)
-                                .line(line)
-                                .build(),
-                        );
-                    }
-                    ast::UsePath::Nested(..) => {}
+                    );
+                }
+            }
+            ast::UsePath::Self_(name, _) => {
+                let source = if name == "self" && !prefix.is_empty() {
+                    prefix.to_string()
+                } else {
+                    join(prefix, name)
+                };
+                if !source.is_empty() {
+                    imports.push(
+                        facts::ParsedImport::builder(facts::ImportKind::RustUse, &source)
+                            .line(line)
+                            .build(),
+                    );
+                }
+            }
+            ast::UsePath::Glob(name, _) => {
+                let source = format!("{}::*", join(prefix, name));
+                imports.push(
+                    facts::ParsedImport::builder(facts::ImportKind::NamespaceImport, &source)
+                        .line(line)
+                        .star(true)
+                        .build(),
+                );
+            }
+            ast::UsePath::Nested(base, children, _) => {
+                let nested_prefix = join(prefix, base);
+                for child in children {
+                    emit(child, &nested_prefix, imports, line);
                 }
             }
         }
-        ast::UsePath::Self_(p, _) => {
-            imports.push(
-                facts::ParsedImport::builder(facts::ImportKind::RustUse, p)
-                    .line(line)
-                    .build(),
-            );
-        }
     }
+
+    emit(path, "", imports, line);
 }
 
 // ── Variables ───────────────────────────────────────────────────────────────
@@ -737,14 +732,15 @@ fn collect_calls_in_item(item: &ast::Item, calls: &mut Vec<facts::ParsedCall>) {
             }
         }
         // Macro invocations (e.g. `vec![...]`, `println!(...)`) are call-like
-        // constructs; previously dropped from the call graph.
-        ast::Item::Macro(inv, span) => {
+        // constructs; only actual macro syntax has a semantic name.
+        ast::Item::Macro(inv, span) if !inv.name.is_empty() => {
             calls.push(
                 facts::ParsedCall::builder(facts::CallKind::FunctionCall, &inv.name)
                     .pos(span.start.line, span.start.column)
                     .build(),
             );
         }
+        ast::Item::Macro(..) => {}
         _ => {}
     }
 }

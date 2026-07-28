@@ -1,8 +1,14 @@
 use super::ast::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenerationError {
+    UnsupportedNode(&'static str),
+}
+
 pub struct Codegen {
     output: String,
     indent: usize,
+    error: Option<GenerationError>,
 }
 impl Default for Codegen {
     fn default() -> Self {
@@ -14,15 +20,26 @@ impl Codegen {
         Self {
             output: String::new(),
             indent: 0,
+            error: None,
         }
     }
-    pub fn generate(&mut self, p: &Program) -> String {
+    pub fn generate(&mut self, p: &Program) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
+        self.error = None;
         for d in &p.decls {
             self.decl(d, None);
         }
-        self.output.clone()
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(self.output.clone()),
+        }
+    }
+
+    fn unsupported(&mut self, node: &'static str) {
+        if self.error.is_none() {
+            self.error = Some(GenerationError::UnsupportedNode(node));
+        }
     }
     fn ind(&mut self) {
         self.output.push_str(&"    ".repeat(self.indent));
@@ -208,9 +225,25 @@ impl Codegen {
                 }
                 self.output.push_str(owner.unwrap_or("RipexType"));
                 self.params(&v.params);
-                self.output.push_str(" {\n");
-                self.ind();
-                self.output.push_str("}\n");
+                if let Some(initializer) = &v.initializer {
+                    self.output.push_str(" : ");
+                    match initializer {
+                        ConstructorInit::Base(_) => self.output.push_str("base"),
+                        ConstructorInit::This(_) => self.output.push_str("this"),
+                    }
+                    self.output.push('(');
+                    let args = match initializer {
+                        ConstructorInit::Base(args) | ConstructorInit::This(args) => args,
+                    };
+                    self.exprs(args);
+                    self.output.push(')');
+                }
+                if let Some(body) = &v.body {
+                    self.output.push(' ');
+                    self.block(body);
+                } else {
+                    self.output.push_str(" {}\n");
+                }
             }
             Decl::Destructor(_, _) => {
                 self.output.push('~');
@@ -235,7 +268,12 @@ impl Codegen {
                 self.output.push_str(" operator ");
                 self.output.push_str(&v.op);
                 self.params(&v.params);
-                self.output.push_str(" {}\n");
+                if let Some(body) = &v.body {
+                    self.output.push(' ');
+                    self.block(body);
+                } else {
+                    self.output.push_str(" {}\n");
+                }
             }
             Decl::Conversion(v, _) => {
                 self.output.push_str(if v.is_explicit {
@@ -245,7 +283,12 @@ impl Codegen {
                 });
                 self.ty(&v.return_type);
                 self.params(std::slice::from_ref(&v.param));
-                self.output.push_str(" {}\n");
+                if let Some(body) = &v.body {
+                    self.output.push(' ');
+                    self.block(body);
+                } else {
+                    self.output.push_str(" {}\n");
+                }
             }
         }
     }
@@ -293,6 +336,14 @@ impl Codegen {
         }
         self.output.push(')');
     }
+    fn exprs(&mut self, values: &[Expr]) {
+        for (index, value) in values.iter().enumerate() {
+            if index > 0 {
+                self.output.push_str(", ");
+            }
+            self.expr(value);
+        }
+    }
     fn block(&mut self, b: &Block) {
         self.output.push_str("{\n");
         self.indent += 1;
@@ -334,20 +385,11 @@ impl Codegen {
                 }
                 self.output.push_str(";\n");
             }
-            Stmt::Empty(_) => self.output.push_str(";\n"),
-            _ => self.output.push_str(";\n"),
+            _ => self.unsupported("unsupported statement"),
         }
     }
     fn ty(&mut self, e: &Expr) {
         self.expr(e)
-    }
-    fn exprs(&mut self, v: &[Expr]) {
-        for (i, e) in v.iter().enumerate() {
-            if i > 0 {
-                self.output.push_str(", ");
-            }
-            self.expr(e);
-        }
     }
     fn expr(&mut self, e: &Expr) {
         match e {
@@ -427,7 +469,7 @@ impl Codegen {
                 self.expr(v);
                 self.output.push(')');
             }
-            _ => self.output.push_str("null"),
+            _ => self.unsupported("unsupported expression"),
         }
     }
 }

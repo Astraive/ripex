@@ -1,8 +1,14 @@
 use super::ast::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenerationError {
+    UnsupportedNode(&'static str),
+}
+
 pub struct Codegen {
     output: String,
     indent: usize,
+    error: Option<GenerationError>,
 }
 
 impl Default for Codegen {
@@ -16,16 +22,27 @@ impl Codegen {
         Self {
             output: String::new(),
             indent: 0,
+            error: None,
         }
     }
 
-    pub fn generate(&mut self, program: &Program) -> String {
+    pub fn generate(&mut self, program: &Program) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
+        self.error = None;
         for decl in &program.decls {
             self.emit_decl(decl);
         }
-        self.output.clone()
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(self.output.clone()),
+        }
+    }
+
+    fn unsupported(&mut self, node: &'static str) {
+        if self.error.is_none() {
+            self.error = Some(GenerationError::UnsupportedNode(node));
+        }
     }
 
     fn push_indent(&mut self) {
@@ -335,7 +352,7 @@ impl Codegen {
             Stmt::Decl(Decl::Var(var, _), _) => {
                 self.emit_value_decl("var", &var.names, var.kind.as_deref(), &var.values)
             }
-            _ => {}
+            _ => self.unsupported("unsupported inline statement"),
         }
     }
 

@@ -36,7 +36,7 @@ impl<'a> Lexer<'a> {
         loop {
             if self.tokens.len() >= crate::limits::MAX_TOKENS {
                 self.errors.push(ParseError::with_message(
-                    DiagnosticCode::InputTooLarge,
+                    DiagnosticCode::TokenLimitExceeded,
                     Span::ZERO,
                     "too many tokens",
                 ));

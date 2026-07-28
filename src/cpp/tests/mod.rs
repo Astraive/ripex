@@ -125,3 +125,33 @@ fn test_extract_enum_members() {
     assert!(members.contains(&"GREEN"), "GREEN missing: {:?}", members);
     assert!(members.contains(&"BLUE"), "BLUE missing: {:?}", members);
 }
+
+#[test]
+fn test_include_new_and_lambda_facts() {
+    let src = r#"#include "widget.hpp"
+#include <vector>
+Widget* make() {
+    auto value = new Widget(1);
+    auto run = []() { target(); };
+    run();
+}
+"#;
+    let (program, _errors) = parse_program(src);
+    let result = extract_facts(&program);
+    let imports: Vec<&str> = result.imports.iter().map(|item| item.source.as_str()).collect();
+    assert!(imports.contains(&"widget.hpp"), "quoted include missing: {:?}", imports);
+    assert!(imports.contains(&"vector"), "system include missing: {:?}", imports);
+    assert!(
+        result
+            .calls
+            .iter()
+            .any(|call| call.kind == CallKind::ConstructorCall && call.callee_text == "Widget"),
+        "new Widget constructor call missing: {:?}",
+        result.calls
+    );
+    assert!(
+        result.calls.iter().any(|call| call.callee_text == "target"),
+        "lambda body call missing: {:?}",
+        result.calls
+    );
+}

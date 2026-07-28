@@ -1068,3 +1068,56 @@ fn test_typescript_optional_calls_and_destructuring_facts() {
         import.kind == crate::facts::ImportKind::DynamicImport && import.source == "./feature.js"
     }));
 }
+
+#[test]
+fn token_limit_is_reported_by_all_js_entrypoints() {
+    let source = "x;".repeat(crate::limits::MAX_TOKENS / 2 + 2);
+    assert!(source.len() < crate::limits::MAX_INPUT_SIZE);
+
+    let options = ParserOptions::default();
+    let (_, program_errors, _) = parser::parse_program(&source, &options);
+    assert!(program_errors
+        .iter()
+        .any(|error| error.code == crate::diagnostics::DiagnosticCode::TokenLimitExceeded));
+
+    let (_, module_errors, _) = parser::parse_module(&source, &options);
+    assert!(module_errors
+        .iter()
+        .any(|error| error.code == crate::diagnostics::DiagnosticCode::TokenLimitExceeded));
+
+    let (_, script_errors, _) = parser::parse_script(&source, &options);
+    assert!(script_errors
+        .iter()
+        .any(|error| error.code == crate::diagnostics::DiagnosticCode::TokenLimitExceeded));
+}
+
+#[test]
+fn deep_js_prefix_reports_recursion_limit() {
+    let source = "!".repeat(crate::limits::MAX_RECURSION as usize + 64) + "x;";
+    let options = ParserOptions::default();
+    let (_, errors, _) = parser::parse_program(&source, &options);
+    assert!(errors
+        .iter()
+        .any(|error| error.code == crate::diagnostics::DiagnosticCode::MaxRecursionExceeded));
+}
+
+#[test]
+fn byte_limit_is_enforced_by_all_js_entrypoints() {
+    let source = "x".repeat(crate::limits::MAX_INPUT_SIZE + 1);
+    let options = ParserOptions::default();
+
+    let (_, program_errors, _) = parser::parse_program(&source, &options);
+    assert!(program_errors
+        .iter()
+        .any(|error| error.code == crate::diagnostics::DiagnosticCode::InputTooLarge));
+
+    let (_, module_errors, _) = parser::parse_module(&source, &options);
+    assert!(module_errors
+        .iter()
+        .any(|error| error.code == crate::diagnostics::DiagnosticCode::InputTooLarge));
+
+    let (_, script_errors, _) = parser::parse_script(&source, &options);
+    assert!(script_errors
+        .iter()
+        .any(|error| error.code == crate::diagnostics::DiagnosticCode::InputTooLarge));
+}

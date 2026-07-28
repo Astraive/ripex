@@ -21,7 +21,7 @@ impl Parser {
             self.advance();
             let cond = self.parse_or_expr();
             self.expect(TokenKind::Else);
-            let else_ = self.parse_test();
+            let else_ = self.parse_test_guarded();
             expr = Expr::IfElse(
                 Box::new(cond),
                 Box::new(expr),
@@ -31,13 +31,21 @@ impl Parser {
         }
         if self.peek() == TokenKind::Walrus {
             self.advance();
-            let rhs = self.parse_test();
+            let rhs = self.parse_test_guarded();
             expr = Expr::Walrus(
                 Box::new(expr),
                 Box::new(rhs),
                 Span::new(start, self.prev_end()),
             );
         }
+        expr
+    }
+    fn parse_test_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Error(Span::ZERO);
+        }
+        let expr = self.parse_test();
+        self.pop_recursion();
         expr
     }
 
@@ -53,12 +61,20 @@ impl Parser {
         if self.peek() == TokenKind::Not {
             let start = self.peek_token().span.start;
             self.advance();
-            let expr = self.parse_not_expr();
+            let expr = self.parse_not_expr_guarded();
             let end = expr.span().end;
             Expr::Unary(UnaryOp::Not, Box::new(expr), Span::new(start, end))
         } else {
             self.parse_comparison()
         }
+    }
+    fn parse_not_expr_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Error(Span::ZERO);
+        }
+        let expr = self.parse_not_expr();
+        self.pop_recursion();
+        expr
     }
 
     fn parse_comparison(&mut self) -> Expr {
@@ -219,34 +235,42 @@ impl Parser {
         match self.peek() {
             TokenKind::Plus => {
                 self.advance();
-                let e = self.parse_term();
+                let e = self.parse_term_guarded();
                 let end = e.span().end;
                 Expr::Unary(UnaryOp::Pos, Box::new(e), Span::new(start, end))
             }
             TokenKind::Minus => {
                 self.advance();
-                let e = self.parse_term();
+                let e = self.parse_term_guarded();
                 let end = e.span().end;
                 Expr::Unary(UnaryOp::Neg, Box::new(e), Span::new(start, end))
             }
             TokenKind::Tilde => {
                 self.advance();
-                let e = self.parse_term();
+                let e = self.parse_term_guarded();
                 let end = e.span().end;
                 Expr::Unary(UnaryOp::Invert, Box::new(e), Span::new(start, end))
             }
             TokenKind::Star => {
                 self.advance();
-                let e = self.parse_term();
+                let e = self.parse_term_guarded();
                 Expr::Starred(Box::new(e), Span::new(start, self.prev_end()))
             }
             TokenKind::Await => {
                 self.advance();
-                let e = self.parse_term();
+                let e = self.parse_term_guarded();
                 Expr::Await(Box::new(e), Span::new(start, self.prev_end()))
             }
             _ => self.parse_power(),
         }
+    }
+    fn parse_term_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Error(Span::ZERO);
+        }
+        let expr = self.parse_term();
+        self.pop_recursion();
+        expr
     }
 
     fn parse_power(&mut self) -> Expr {
@@ -254,7 +278,7 @@ impl Parser {
         let mut expr = self.parse_await_primary();
         if self.peek() == TokenKind::StarStar {
             self.advance();
-            let right = self.parse_power();
+            let right = self.parse_power_guarded();
             expr = Expr::Binary(
                 Box::new(expr),
                 BinaryOp::Pow,
@@ -264,12 +288,20 @@ impl Parser {
         }
         expr
     }
+    fn parse_power_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Error(Span::ZERO);
+        }
+        let expr = self.parse_power();
+        self.pop_recursion();
+        expr
+    }
 
     fn parse_await_primary(&mut self) -> Expr {
         if self.peek() == TokenKind::Await {
             let start = self.peek_token().span.start;
             self.advance();
-            let expr = self.parse_power();
+            let expr = self.parse_power_guarded();
             let end = expr.span().end;
             Expr::Await(Box::new(expr), Span::new(start, end))
         } else {
@@ -723,7 +755,7 @@ impl Parser {
         // Check for assignment
         if self.peek() == TokenKind::Eq {
             self.advance();
-            let rhs = self.parse_test();
+            let rhs = self.parse_test_guarded();
             expr = Expr::Walrus(
                 Box::new(expr),
                 Box::new(rhs),

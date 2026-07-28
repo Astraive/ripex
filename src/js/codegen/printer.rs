@@ -1,10 +1,16 @@
 use crate::arena::Arena;
 use crate::js::ast::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenerationError {
+    UnsupportedNode(&'static str),
+}
+
 pub struct Printer {
     output: String,
     indent: usize,
     indent_size: usize,
+    error: Option<GenerationError>,
 }
 
 impl Default for Printer {
@@ -19,6 +25,7 @@ impl Printer {
             output: String::new(),
             indent: 0,
             indent_size: 2,
+            error: None,
         }
     }
 
@@ -45,25 +52,58 @@ impl Printer {
         self.push("\n");
     }
 
-    pub fn print_program(&mut self, program: &Program, ast: &mut Arena<Expr>) -> String {
+    pub fn print_program(
+        &mut self,
+        program: &Program,
+        ast: &mut Arena<Expr>,
+    ) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
+        self.error = None;
         match program {
-            Program::Script(script) => self.print_script(script, ast),
-            Program::Module(module) => self.print_module(module, ast),
+            Program::Script(script) => self.print_script(script, ast)?,
+            Program::Module(module) => self.print_module(module, ast)?,
         }
-        std::mem::take(&mut self.output)
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(std::mem::take(&mut self.output)),
+        }
     }
 
-    pub fn print_script(&mut self, script: &Script, ast: &mut Arena<Expr>) {
+    pub fn print_script(
+        &mut self,
+        script: &Script,
+        ast: &mut Arena<Expr>,
+    ) -> Result<(), GenerationError> {
+        self.error = None;
         for stmt in &script.body {
             self.print_stmt(stmt, ast);
         }
+        self.finish()
     }
 
-    pub fn print_module(&mut self, module: &Module, ast: &mut Arena<Expr>) {
+    pub fn print_module(
+        &mut self,
+        module: &Module,
+        ast: &mut Arena<Expr>,
+    ) -> Result<(), GenerationError> {
+        self.error = None;
         for item in &module.body {
             self.print_module_item(item, ast);
+        }
+        self.finish()
+    }
+
+    fn finish(&mut self) -> Result<(), GenerationError> {
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
+    fn unsupported(&mut self, node: &'static str) {
+        if self.error.is_none() {
+            self.error = Some(GenerationError::UnsupportedNode(node));
         }
     }
 
@@ -857,7 +897,7 @@ impl Printer {
                 }
                 self.push(&p.name.name);
             }
-            Expr::Invalid(_) => self.push("<invalid>"),
+            Expr::Invalid(_) => self.unsupported("invalid expression"),
             Expr::Record(r) => {
                 self.push("#{\n");
                 self.indent += 1;
@@ -1197,7 +1237,7 @@ impl Printer {
                 self.print_type_ann(false_t);
             }
             TypeAnn::This(_) => self.push("this"),
-            TypeAnn::Pred(_, _) => self.push("/* pred */ any"),
+            TypeAnn::Pred(_, _) => self.unsupported("type predicate"),
             TypeAnn::Indexed(obj, idx) => {
                 self.print_type_ann(obj);
                 self.push("[");
@@ -1511,7 +1551,7 @@ impl Printer {
                 self.print_expr(ap.right, ast);
             }
             Pat::Expr(e) => self.print_expr(*e, ast),
-            Pat::Invalid(_) => self.push("<invalid>"),
+            Pat::Invalid(_) => self.unsupported("invalid pattern"),
         }
     }
 }

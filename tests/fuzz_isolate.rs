@@ -1,3 +1,5 @@
+#![cfg(feature = "lang-python")]
+
 //! Minimal test to isolate which parser/language causes the OOM crash.
 use std::io::Write;
 

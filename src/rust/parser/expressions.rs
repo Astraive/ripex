@@ -182,7 +182,7 @@ impl Parser {
         match self.peek() {
             TokenKind::Minus => {
                 self.advance();
-                let e = self.parse_prefix();
+                let e = self.parse_prefix_guarded();
                 Expr::Unary(
                     UnaryOp::Neg,
                     Box::new(e.clone()),
@@ -191,7 +191,7 @@ impl Parser {
             }
             TokenKind::Exclamation => {
                 self.advance();
-                let e = self.parse_prefix();
+                let e = self.parse_prefix_guarded();
                 Expr::Unary(
                     UnaryOp::Not,
                     Box::new(e.clone()),
@@ -200,7 +200,7 @@ impl Parser {
             }
             TokenKind::Ampersand => {
                 self.advance();
-                let e = self.parse_prefix();
+                let e = self.parse_prefix_guarded();
                 Expr::Unary(
                     UnaryOp::Ref,
                     Box::new(e.clone()),
@@ -209,7 +209,7 @@ impl Parser {
             }
             TokenKind::Star => {
                 self.advance();
-                let e = self.parse_prefix();
+                let e = self.parse_prefix_guarded();
                 Expr::Unary(
                     UnaryOp::Deref,
                     Box::new(e.clone()),
@@ -218,7 +218,7 @@ impl Parser {
             }
             TokenKind::Plus => {
                 self.advance();
-                let e = self.parse_prefix();
+                let e = self.parse_prefix_guarded();
                 Expr::Unary(
                     UnaryOp::Neg,
                     Box::new(e.clone()),
@@ -227,7 +227,7 @@ impl Parser {
             }
             TokenKind::Tilde => {
                 self.advance();
-                let e = self.parse_prefix();
+                let e = self.parse_prefix_guarded();
                 Expr::Unary(
                     UnaryOp::Not,
                     Box::new(e.clone()),
@@ -236,6 +236,14 @@ impl Parser {
             }
             _ => self.parse_primary(),
         }
+    }
+    fn parse_prefix_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Error(Span::ZERO);
+        }
+        let expr = self.parse_prefix();
+        self.pop_recursion();
+        expr
     }
 
     fn parse_primary(&mut self) -> Expr {

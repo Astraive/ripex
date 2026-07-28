@@ -1,3 +1,5 @@
+#![cfg(feature = "lang-js")]
+
 //! Crude bisection probe to locate the JS statement that aborts the process.
 //! Run: cargo test -p ripex --test js_crash_probe -- --nocapture --include-ignored
 
@@ -19,7 +21,7 @@ fn probe_index_js() {
         let prefix: String = lines[..n].join("\n") + "\n";
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let r = parser.parse(&prefix);
-            let e = parser.extract(&r);
+            let e = parser.extract_best_effort(&r).unwrap_or_default();
             (r.errors.len(), e.symbols.len())
         }));
         match r {

@@ -1,8 +1,14 @@
 use super::ast::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenerationError {
+    UnsupportedNode(&'static str),
+}
+
 pub struct Codegen {
     output: String,
     indent: usize,
+    error: Option<GenerationError>,
 }
 impl Default for Codegen {
     fn default() -> Self {
@@ -14,15 +20,26 @@ impl Codegen {
         Self {
             output: String::new(),
             indent: 0,
+            error: None,
         }
     }
-    pub fn generate(&mut self, p: &Program) -> String {
+    pub fn generate(&mut self, p: &Program) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
+        self.error = None;
         for d in &p.decls {
             self.decl(d);
         }
-        self.output.clone()
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(self.output.clone()),
+        }
+    }
+
+    fn unsupported(&mut self, node: &'static str) {
+        if self.error.is_none() {
+            self.error = Some(GenerationError::UnsupportedNode(node));
+        }
     }
     fn ind(&mut self) {
         self.output.push_str(&"    ".repeat(self.indent));
@@ -109,35 +126,21 @@ impl Codegen {
                 if n == "template-instantiation" {
                     self.output
                         .push_str("using ripex_template_instantiation = int;\n");
+                } else if n.contains('.') || n.contains('/') || n.contains('\\') {
+                    // The parser represents preprocessor includes as a
+                    // declaration because the AST has no directive node.
+                    self.output.push_str(&format!("#include \"{n}\"\n"));
                 } else {
                     self.output.push_str(&format!("using {n};\n"));
                 }
             }
             Decl::UsingNamespace(n, _) => self.output.push_str(&format!("using namespace {n};\n")),
-            Decl::Template(v, _) => {
-                self.output.push_str("template <");
-                for (i, p) in v.params.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(", ");
-                    }
-                    match p {
-                        TemplateParam::Type(n, _) => self.output.push_str(&format!("typename {n}")),
-                        TemplateParam::Value(t, n, d, _) => {
-                            self.ty(t);
-                            self.output.push(' ');
-                            self.output.push_str(n);
-                            if let Some(d) = d {
-                                self.output.push_str(" = ");
-                                self.expr(d);
-                            }
-                        }
-                        TemplateParam::Template(n, _) => {
-                            self.output.push_str(&format!("typename {n}"))
-                        }
-                    }
-                }
-                self.output.push_str(">\n");
-                self.decl(&v.decl);
+            Decl::Template(_, _) => {
+                // Template declarations currently lose qualified names and
+                // other source details needed for a semantics-preserving
+                // round trip. Refuse canonical generation instead of
+                // returning syntactically plausible but incorrect C++.
+                self.unsupported("unsupported template declaration");
             }
             Decl::Class(v, _) => {
                 self.output.push_str("class ");
@@ -274,15 +277,18 @@ impl Codegen {
                 self.expr(c);
                 self.output.push_str(") ");
                 self.stub_body(t);
-                if e.is_some() {
-                    self.output.push_str(" else {}");
+                if let Some(e) = e {
+                    self.output.push_str(" else ");
+                    self.stub_body(e);
                 }
                 self.output.push('\n');
             }
-            Stmt::While(c, _, _) => {
+            Stmt::While(c, body, _) => {
                 self.output.push_str("while (");
                 self.expr(c);
-                self.output.push_str(") {}\n");
+                self.output.push_str(") ");
+                self.stub_body(body);
+                self.output.push('\n');
             }
             Stmt::Break(_) => self.output.push_str("break;\n"),
             Stmt::Continue(_) => self.output.push_str("continue;\n"),
@@ -295,14 +301,19 @@ impl Codegen {
                 self.output.push_str(";\n");
             }
             Stmt::Empty(_) => self.output.push_str(";\n"),
-            _ => self.output.push_str("{}\n"),
+            _ => self.unsupported("unsupported statement"),
         }
     }
     fn stub_body(&mut self, s: &Stmt) {
         if let Stmt::Block(b, _) = s {
             self.block(b)
         } else {
-            self.output.push_str("{}");
+            self.output.push_str("{\n");
+            self.indent += 1;
+            self.stmt(s);
+            self.indent -= 1;
+            self.ind();
+            self.output.push('}');
         }
     }
     fn ty(&mut self, e: &Expr) {
@@ -400,7 +411,7 @@ impl Codegen {
                 self.exprs(v);
                 self.output.push('}');
             }
-            _ => self.output.push('0'),
+            _ => self.unsupported("unsupported expression"),
         }
     }
 }

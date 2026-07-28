@@ -1,6 +1,6 @@
 mod fixtures;
 
-use super::facts::{extract_imports, extract_symbols, extract_variables};
+use super::facts::{extract_calls, extract_imports, extract_symbols, extract_variables};
 use super::lexer::{Lexer, TokenKind};
 use super::parser::parse_program;
 use crate::facts::*;
@@ -116,4 +116,39 @@ fn test_parse_all_fixtures() {
         );
         assert!(!program.decls.is_empty());
     }
+}
+
+#[test]
+fn test_constructors_visibility_and_expression_bodies() {
+    let src = r#"
+class User : Base {
+    public User(int id) : base(id) { Initialize(id); }
+    public static User Create(int id) => new User(id);
+    public string Name => GetName();
+}
+"#;
+    let (program, errors) = parse_program(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let symbols = extract_symbols(&program);
+    let ctor = symbols
+        .iter()
+        .find(|symbol| symbol.kind == SymbolKind::Constructor && symbol.name == "User")
+        .expect("User constructor missing");
+    assert_eq!(ctor.visibility, Visibility::Public);
+    let create = symbols
+        .iter()
+        .find(|symbol| symbol.name == "User.Create")
+        .expect("expression-bodied method missing");
+    assert_eq!(create.visibility, Visibility::Public);
+    let calls = extract_calls(&program);
+    assert!(
+        calls.iter().any(|call| call.callee_text == "User"),
+        "constructor call from expression body missing: {:?}",
+        calls
+    );
+    assert!(
+        calls.iter().any(|call| call.callee_text == "GetName"),
+        "property expression body call missing: {:?}",
+        calls
+    );
 }

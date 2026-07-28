@@ -225,8 +225,17 @@ impl<'a> Parser<'a> {
     pub fn bump_recursion(&mut self) -> Result<(), ParseError> {
         self.depth += 1;
         if self.depth > crate::limits::MAX_RECURSION {
-            let tok = self.current_token().clone();
-            let err = self.error(DiagnosticCode::UnexpectedToken, &tok);
+            let err = ParseError::new(
+                DiagnosticCode::MaxRecursionExceeded,
+                self.current_token().span,
+            );
+            if !self
+                .errors
+                .iter()
+                .any(|existing| existing.code == DiagnosticCode::MaxRecursionExceeded)
+            {
+                self.errors.push(err.clone());
+            }
             self.depth -= 1;
             return Err(err);
         }

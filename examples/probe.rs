@@ -16,7 +16,7 @@ fn main() {
             "[{lang}] errors={:?}",
             r.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
         );
-        let f = p.extract(&r);
+        let f = p.extract(&r).expect("fixture should parse completely");
         println!(
             "[{lang}] symbols={} imports={} calls={} vars={}",
             f.symbols.len(),

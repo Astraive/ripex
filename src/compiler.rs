@@ -5,13 +5,27 @@
 //! structural AST is a compiler semantic model.
 
 use crate::{detect_language, Language};
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
+const DEFAULT_MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+const DEFAULT_MAX_TOTAL_OUTPUT_BYTES: usize = 2 * DEFAULT_MAX_OUTPUT_BYTES;
+const MAX_DISCOVERY_DEPTH: usize = 64;
+const MAX_DISCOVERY_FILES: usize = 10_000;
+const MAX_DISCOVERY_PATH_BYTES: usize = 32 * 1024;
+const MAX_COMPILATION_DATABASE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_DISCOVERY_TIME: Duration = Duration::from_secs(5);
+const HARD_MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+const HARD_MAX_TOTAL_OUTPUT_BYTES: usize = 128 * 1024 * 1024;
+const PROCESS_DRAIN_GRACE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone)]
 pub struct CompilerCheckOptions {
@@ -21,8 +35,19 @@ pub struct CompilerCheckOptions {
     pub standard: Option<String>,
     /// Treat a file as part of its nearest project when a project manifest exists.
     pub project: bool,
+    /// Permit execution of project/build metadata and compilation databases.
+    pub trusted_project: bool,
     /// Arguments appended verbatim after ripex's correctness flags.
+    ///
+    /// Raw arguments are intentionally rejected unless both `trusted_project` and
+    /// `allow_unsafe_args` are enabled.
     pub extra_args: Vec<String>,
+    /// Explicitly permit raw arguments that may alter compiler side effects.
+    pub allow_unsafe_args: bool,
+    /// Maximum captured bytes from either compiler output stream.
+    pub max_output_bytes: usize,
+    /// Maximum captured bytes across stdout and stderr combined.
+    pub max_total_output_bytes: usize,
     /// Maximum runtime for each toolchain stage.
     pub timeout: Duration,
 }
@@ -33,7 +58,11 @@ impl Default for CompilerCheckOptions {
             toolchain: None,
             standard: None,
             project: false,
+            trusted_project: false,
             extra_args: Vec::new(),
+            allow_unsafe_args: false,
+            max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
+            max_total_output_bytes: DEFAULT_MAX_TOTAL_OUTPUT_BYTES,
             timeout: Duration::from_secs(120),
         }
     }
@@ -48,7 +77,9 @@ pub enum CheckStatus {
     Unavailable,
     InvocationError,
     TimedOut,
+    OutputLimit,
 }
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -92,6 +123,9 @@ pub struct CompilerStageResult {
     pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+    pub output_truncated: bool,
     pub diagnostics: Vec<CompilerDiagnostic>,
 }
 
@@ -101,6 +135,9 @@ pub struct CompilerCheckReport {
     pub language: Language,
     pub path: PathBuf,
     pub status: CheckStatus,
+    /// Whether project/build metadata was explicitly trusted for this check.
+    pub trusted_project: bool,
+    pub output_truncated: bool,
     pub stages: Vec<CompilerStageResult>,
 }
 
@@ -131,6 +168,20 @@ pub fn plan_compiler_check(
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
             format!("check target does not exist: {}", path.display()),
+        ));
+    }
+    if !options.extra_args.is_empty()
+        && (!options.trusted_project || !options.allow_unsafe_args)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "raw compiler arguments require trusted_project and allow_unsafe_args",
+        ));
+    }
+    if requires_trusted_execution(&path, options) && !options.trusted_project {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "project, build, and compilation-database checks require trusted_project",
         ));
     }
     let language = language
@@ -214,7 +265,7 @@ pub fn plan_compiler_check(
         }
         Language::Rust => {
             if let Some(manifest) = project_file(&path, "Cargo.toml", options.project) {
-                let target_dir = temporary_artifact("cargo-target");
+                let target_dir = temporary_artifact("cargo-target")?;
                 let mut args = vec![
                     "check".into(),
                     "--manifest-path".into(),
@@ -241,7 +292,7 @@ pub fn plan_compiler_check(
                     ));
                 }
                 let edition = options.standard.as_deref().unwrap_or("2021");
-                let output = temporary_artifact("rmeta");
+                let output = temporary_artifact("rmeta")?;
                 let mut args = vec![
                     "--crate-type=lib".into(),
                     format!("--edition={edition}"),
@@ -266,7 +317,7 @@ pub fn plan_compiler_check(
         Language::Go => {
             let project_dir = project_directory(&path, "go.mod", options.project);
             let is_project = project_dir.is_some();
-            let output = temporary_artifact(if cfg!(windows) { "exe" } else { "bin" });
+            let output = temporary_artifact(if cfg!(windows) { "exe" } else { "bin" })?;
             let (current_dir, mut args) = if let Some(dir) = project_dir {
                 (dir, vec!["build".into(), "./...".into()])
             } else if path.is_dir() {
@@ -304,9 +355,9 @@ pub fn plan_compiler_check(
             plans.push(plan);
         }
         Language::CSharp => {
-            if let Some(project) = csharp_project(&path, options.project) {
-                let output_dir = temporary_artifact("dotnet-output");
-                let intermediate_dir = temporary_artifact("dotnet-intermediate");
+            if let Some(project) = csharp_project(&path, options.project)? {
+                let output_dir = temporary_artifact("dotnet-output")?;
+                let intermediate_dir = temporary_artifact("dotnet-intermediate")?;
                 let mut args = vec![
                     "build".into(),
                     project.to_string_lossy().into_owned(),
@@ -331,7 +382,7 @@ pub fn plan_compiler_check(
                 plan.cleanup.extend([output_dir, intermediate_dir]);
                 plans.push(plan);
             } else {
-                let output = temporary_artifact("dll");
+                let output = temporary_artifact("dll")?;
                 let mut args = vec![
                     "/nologo".into(),
                     "/target:library".into(),
@@ -473,13 +524,23 @@ pub fn check_with_compiler(
     let plans = plan_compiler_check(&path, Some(language), options)?;
     let stages = plans
         .iter()
-        .map(|plan| execute_invocation(plan, options.timeout))
+        .map(|plan| {
+            execute_invocation(
+                plan,
+                options.timeout,
+                options.max_output_bytes,
+                options.max_total_output_bytes,
+            )
+        })
         .collect::<Vec<_>>();
     let status = aggregate_status(&stages);
+    let output_truncated = stages.iter().any(|stage| stage.output_truncated);
     Ok(CompilerCheckReport {
         language,
         path,
         status,
+        trusted_project: options.trusted_project,
+        output_truncated,
         stages,
     })
 }
@@ -525,7 +586,12 @@ fn python_candidates() -> Vec<Vec<String>> {
     candidates(&["python3", "python"])
 }
 
-fn execute_invocation(plan: &CompilerInvocation, timeout: Duration) -> CompilerStageResult {
+fn execute_invocation(
+    plan: &CompilerInvocation,
+    timeout: Duration,
+    max_output_bytes: usize,
+    max_total_output_bytes: usize,
+) -> CompilerStageResult {
     let mut last_not_found = None;
     for candidate in &plan.candidates {
         let Some((executable, prefix)) = candidate.split_first() else {
@@ -543,11 +609,12 @@ fn execute_invocation(plan: &CompilerInvocation, timeout: Duration) -> CompilerS
             .current_dir(&plan.current_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        match run_process(process, timeout) {
+        match run_process(process, timeout, max_output_bytes, max_total_output_bytes) {
             Ok(capture) => {
                 let stdout = String::from_utf8_lossy(&capture.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&capture.stderr).into_owned();
-                if capture.status.is_some_and(|status| !status.success())
+                if !capture.output_limited
+                    && capture.status.is_some_and(|status| !status.success())
                     && output_indicates_unavailable(&stdout, &stderr)
                 {
                     last_not_found = Some(
@@ -561,7 +628,9 @@ fn execute_invocation(plan: &CompilerInvocation, timeout: Duration) -> CompilerS
                     cleanup_artifacts(plan);
                     continue;
                 }
-                let status = if capture.timed_out {
+                let status = if capture.output_limited {
+                    CheckStatus::OutputLimit
+                } else if capture.timed_out {
                     CheckStatus::TimedOut
                 } else if capture.status.is_some_and(|status| status.success()) {
                     CheckStatus::Passed
@@ -578,6 +647,9 @@ fn execute_invocation(plan: &CompilerInvocation, timeout: Duration) -> CompilerS
                     exit_code: capture.status.and_then(|status| status.code()),
                     stdout,
                     stderr,
+                    stdout_truncated: capture.stdout_truncated,
+                    stderr_truncated: capture.stderr_truncated,
+                    output_truncated: capture.output_limited,
                     diagnostics,
                 };
             }
@@ -594,6 +666,9 @@ fn execute_invocation(plan: &CompilerInvocation, timeout: Duration) -> CompilerS
                     exit_code: None,
                     stdout: String::new(),
                     stderr: error.to_string(),
+                    stdout_truncated: false,
+                    stderr_truncated: false,
+                    output_truncated: false,
                     diagnostics: Vec::new(),
                 };
             }
@@ -608,6 +683,9 @@ fn execute_invocation(plan: &CompilerInvocation, timeout: Duration) -> CompilerS
         exit_code: None,
         stdout: String::new(),
         stderr: last_not_found.unwrap_or_else(|| "no toolchain candidate configured".into()),
+        stdout_truncated: false,
+        stderr_truncated: false,
+        output_truncated: false,
         diagnostics: Vec::new(),
     }
 }
@@ -623,48 +701,213 @@ struct ProcessCapture {
     status: Option<ExitStatus>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
     timed_out: bool,
+    output_limited: bool,
 }
 
-fn run_process(mut command: Command, timeout: Duration) -> io::Result<ProcessCapture> {
+#[derive(Debug)]
+struct StreamCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+#[derive(Clone, Copy)]
+enum StreamKind {
+    Stdout,
+    Stderr,
+}
+
+fn run_process(
+    mut command: Command,
+    timeout: Duration,
+    max_output_bytes: usize,
+    max_total_output_bytes: usize,
+) -> io::Result<ProcessCapture> {
+    let max_output_bytes = max_output_bytes.min(HARD_MAX_OUTPUT_BYTES);
+    let max_total_output_bytes = max_total_output_bytes.min(HARD_MAX_TOTAL_OUTPUT_BYTES);
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = command.spawn()?;
     let stdout = child.stdout.take().expect("stdout was piped");
     let stderr = child.stderr.take().expect("stderr was piped");
-    let stdout_reader = thread::spawn(move || read_stream(stdout));
-    let stderr_reader = thread::spawn(move || read_stream(stderr));
+    let (sender, receiver) = mpsc::channel();
+    spawn_reader(stdout, max_output_bytes, StreamKind::Stdout, &sender);
+    spawn_reader(stderr, max_output_bytes, StreamKind::Stderr, &sender);
+
     let started = Instant::now();
-    let (status, timed_out) = loop {
-        if let Some(status) = child.try_wait()? {
-            break (Some(status), false);
+    let mut status = None;
+    let mut timed_out = false;
+    let mut output_limited = false;
+    let mut stdout_capture = None;
+    let mut stderr_capture = None;
+    let mut reader_error = None;
+    let mut stopping = false;
+    let mut drain_deadline = None;
+
+    loop {
+        drain_reader_results(
+            &receiver,
+            &mut stdout_capture,
+            &mut stderr_capture,
+            &mut reader_error,
+            &mut output_limited,
+        );
+        if status.is_none() {
+            status = child.try_wait()?;
         }
-        if started.elapsed() >= timeout {
-            let _ = child.kill();
-            break (Some(child.wait()?), true);
+        if !stopping {
+            if output_limited {
+                terminate_child(&mut child);
+                stopping = true;
+                drain_deadline = Some(Instant::now() + PROCESS_DRAIN_GRACE);
+            } else if status.is_some() {
+                stopping = true;
+                drain_deadline = Some(Instant::now() + PROCESS_DRAIN_GRACE);
+            } else if started.elapsed() >= timeout {
+                terminate_child(&mut child);
+                timed_out = true;
+                stopping = true;
+                drain_deadline = Some(Instant::now() + PROCESS_DRAIN_GRACE);
+            }
         }
-        thread::sleep(Duration::from_millis(10));
-    };
-    let stdout = stdout_reader
-        .join()
-        .map_err(|_| io::Error::other("stdout reader thread panicked"))??;
-    let stderr = stderr_reader
-        .join()
-        .map_err(|_| io::Error::other("stderr reader thread panicked"))??;
+        if stopping {
+            if status.is_none() {
+                status = child.try_wait()?;
+            }
+            if status.is_some() && stdout_capture.is_some() && stderr_capture.is_some() {
+                break;
+            }
+            if drain_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                break;
+            }
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    drain_reader_results(
+        &receiver,
+        &mut stdout_capture,
+        &mut stderr_capture,
+        &mut reader_error,
+        &mut output_limited,
+    );
+    if let Some(error) = reader_error {
+        return Err(error);
+    }
+    let mut stdout = stdout_capture.unwrap_or(StreamCapture {
+        bytes: Vec::new(),
+        truncated: true,
+    });
+    let mut stderr = stderr_capture.unwrap_or(StreamCapture {
+        bytes: Vec::new(),
+        truncated: true,
+    });
+    let total_cap = max_total_output_bytes;
+    if stdout.bytes.len().saturating_add(stderr.bytes.len()) > total_cap {
+        let stdout_len = stdout.bytes.len();
+        let stdout_limit = stdout_len.min(total_cap);
+        stdout.bytes.truncate(stdout_limit);
+        let remaining = total_cap.saturating_sub(stdout.bytes.len());
+        let stderr_len = stderr.bytes.len();
+        stderr.bytes.truncate(remaining);
+        stdout.truncated |= stdout.bytes.len() < stdout_len;
+        stderr.truncated |= stderr.bytes.len() < stderr_len;
+        output_limited = true;
+    }
+    output_limited |= stdout.truncated || stderr.truncated;
     Ok(ProcessCapture {
         status,
-        stdout,
-        stderr,
+        stdout: stdout.bytes,
+        stderr: stderr.bytes,
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
         timed_out,
+        output_limited,
     })
 }
 
-fn read_stream(mut stream: impl Read) -> io::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    stream.read_to_end(&mut bytes)?;
-    Ok(bytes)
+fn spawn_reader(
+    stream: impl Read + Send + 'static,
+    cap: usize,
+    kind: StreamKind,
+    sender: &Sender<(StreamKind, io::Result<StreamCapture>)>,
+) {
+    let sender = sender.clone();
+    thread::spawn(move || {
+        let result = read_stream(stream, cap);
+        let _ = sender.send((kind, result));
+    });
+}
+
+fn drain_reader_results(
+    receiver: &Receiver<(StreamKind, io::Result<StreamCapture>)>,
+    stdout: &mut Option<StreamCapture>,
+    stderr: &mut Option<StreamCapture>,
+    reader_error: &mut Option<io::Error>,
+    output_limited: &mut bool,
+) {
+    while let Ok((kind, result)) = receiver.try_recv() {
+        match result {
+            Ok(capture) => {
+                *output_limited |= capture.truncated;
+                match kind {
+                    StreamKind::Stdout => *stdout = Some(capture),
+                    StreamKind::Stderr => *stderr = Some(capture),
+                }
+            }
+            Err(error) => *reader_error = Some(error),
+        }
+    }
+}
+
+fn terminate_child(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let pid = child.id() as i32;
+        unsafe {
+            // The child is placed in its own process group before spawning.
+            unsafe extern "C" {
+                fn kill(pid: i32, signal: i32) -> i32;
+            }
+            let _ = kill(-pid, 9);
+        }
+    }
+    let _ = child.kill();
+}
+
+fn read_stream(mut stream: impl Read, cap: usize) -> io::Result<StreamCapture> {
+    let mut bytes = Vec::with_capacity(cap.min(8192));
+    let mut buffer = [0_u8; 8192];
+    while bytes.len() < cap {
+        let chunk = (cap - bytes.len()).min(buffer.len());
+        let read = stream.read(&mut buffer[..chunk])?;
+        if read == 0 {
+            return Ok(StreamCapture {
+                bytes,
+                truncated: false,
+            });
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+    }
+    let mut probe = [0_u8; 1];
+    let read = stream.read(&mut probe)?;
+    if read == 0 {
+        Ok(StreamCapture {
+            bytes,
+            truncated: false,
+        })
+    } else {
+        Ok(StreamCapture {
+            bytes,
+            truncated: true,
+        })
+    }
 }
 
 fn aggregate_status(stages: &[CompilerStageResult]) -> CheckStatus {
     for status in [
+        CheckStatus::OutputLimit,
         CheckStatus::TimedOut,
         CheckStatus::InvocationError,
         CheckStatus::Failed,
@@ -766,6 +1009,26 @@ fn parse_location(prefix: &str) -> (Option<String>, Option<u32>, Option<u32>) {
     }
 }
 
+fn read_bounded_file(path: &Path, max_bytes: usize) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(max_bytes.saturating_add(1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("file {} exceeds its {} byte budget", path.display(), max_bytes),
+        ));
+    }
+    String::from_utf8(bytes).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("file {} is not valid UTF-8: {error}", path.display()),
+        )
+    })
+}
+
 /// Prefer a compilation database for native projects. It is the only portable
 /// way to retain the include paths, defines, targets, and generated headers a
 /// real C/C++ build uses, so each entry is converted into a no-output semantic
@@ -779,7 +1042,7 @@ fn native_compilation_database_plans(
     let Some(database) = compilation_database(path, options.project) else {
         return Ok(None);
     };
-    let contents = fs::read_to_string(&database)?;
+    let contents = read_bounded_file(&database, MAX_COMPILATION_DATABASE_BYTES)?;
     let entries: serde_json::Value = serde_json::from_str(&contents).map_err(|error| {
         io::Error::new(
             io::ErrorKind::InvalidData,
@@ -799,7 +1062,10 @@ fn native_compilation_database_plans(
         )
     })?;
     let database_dir = database.parent().unwrap_or(Path::new("."));
-    let target = if path.file_name().and_then(|name| name.to_str()) == Some("compile_commands.json")
+    let target = if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("compile_commands.json"))
     {
         database_dir
     } else {
@@ -886,7 +1152,11 @@ fn native_compilation_database_plans(
 }
 
 fn compilation_database(path: &Path, enabled: bool) -> Option<PathBuf> {
-    if path.file_name().and_then(|name| name.to_str()) == Some("compile_commands.json") {
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("compile_commands.json"))
+    {
         return Some(path.to_path_buf());
     }
     if !enabled && !path.is_dir() {
@@ -895,6 +1165,7 @@ fn compilation_database(path: &Path, enabled: bool) -> Option<PathBuf> {
     let start = if path.is_dir() { path } else { path.parent()? };
     start
         .ancestors()
+        .take(MAX_DISCOVERY_DEPTH + 1)
         .map(|directory| directory.join("compile_commands.json"))
         .find(|candidate| candidate.is_file())
 }
@@ -1159,27 +1430,77 @@ fn source_files(path: &Path, extensions: &[&str]) -> io::Result<Vec<PathBuf>> {
 }
 
 fn collect_files(path: &Path, extensions: &[&str], output: &mut Vec<PathBuf>) -> io::Result<()> {
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let child = entry.path();
-        if child.is_dir() {
-            let name = child.file_name().and_then(|value| value.to_str());
-            if !matches!(name, Some("node_modules" | "target" | ".git")) {
-                collect_files(&child, extensions, output)?;
+    let extensions = extensions
+        .iter()
+        .map(|extension| extension.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let started = Instant::now();
+    let mut pending = vec![(path.to_path_buf(), 0_usize)];
+    let mut visited_files = 0_usize;
+    while let Some((directory, depth)) = pending.pop() {
+        if started.elapsed() > MAX_DISCOVERY_TIME {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "source discovery exceeded its time budget",
+            ));
+        }
+        if depth > MAX_DISCOVERY_DEPTH {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "source discovery exceeded its depth budget",
+            ));
+        }
+        let mut children = fs::read_dir(&directory)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        children.sort();
+        for child in children {
+            if child.to_string_lossy().len() > MAX_DISCOVERY_PATH_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "source discovery encountered a path over its budget",
+                ));
             }
-        } else if child
-            .extension()
-            .and_then(|value| value.to_str())
-            .is_some_and(|extension| extensions.contains(&extension))
-        {
-            output.push(child);
+            let metadata = fs::symlink_metadata(&child)?;
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                let name = child.file_name().and_then(|value| value.to_str());
+                if !matches!(name, Some("node_modules" | "target" | ".git")) {
+                    pending.push((child, depth + 1));
+                }
+                continue;
+            }
+            visited_files = visited_files.saturating_add(1);
+            if visited_files > MAX_DISCOVERY_FILES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "source discovery exceeded its file budget",
+                ));
+            }
+            let extension = child
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(str::to_ascii_lowercase);
+            if extension
+                .as_deref()
+                .is_some_and(|extension| extensions.iter().any(|item| item == extension))
+            {
+                output.push(child);
+            }
         }
     }
     Ok(())
 }
 
 fn project_file(path: &Path, name: &str, enabled: bool) -> Option<PathBuf> {
-    if path.file_name().and_then(|value| value.to_str()) == Some(name) {
+    if path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case(name))
+    {
         return Some(path.to_path_buf());
     }
     if !enabled && !path.is_dir() {
@@ -1188,6 +1509,7 @@ fn project_file(path: &Path, name: &str, enabled: bool) -> Option<PathBuf> {
     let start = if path.is_dir() { path } else { path.parent()? };
     start
         .ancestors()
+        .take(MAX_DISCOVERY_DEPTH + 1)
         .map(|directory| directory.join(name))
         .find(|candidate| candidate.is_file())
 }
@@ -1196,34 +1518,47 @@ fn project_directory(path: &Path, manifest: &str, enabled: bool) -> Option<PathB
     project_file(path, manifest, enabled).and_then(|file| file.parent().map(Path::to_path_buf))
 }
 
-fn csharp_project(path: &Path, enabled: bool) -> Option<PathBuf> {
-    if matches!(
-        path.extension().and_then(|value| value.to_str()),
-        Some("csproj" | "sln")
-    ) {
-        return Some(path.to_path_buf());
+fn csharp_project(path: &Path, enabled: bool) -> io::Result<Option<PathBuf>> {
+    if is_csharp_project_file(path) {
+        return Ok(Some(path.to_path_buf()));
     }
     if !enabled && !path.is_dir() {
-        return None;
+        return Ok(None);
     }
-    let start = if path.is_dir() { path } else { path.parent()? };
-    for directory in start.ancestors() {
-        if let Ok(entries) = fs::read_dir(directory) {
-            if let Some(project) = entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .find(|candidate| {
-                    matches!(
-                        candidate.extension().and_then(|value| value.to_str()),
-                        Some("csproj" | "sln")
-                    )
-                })
-            {
-                return Some(project);
-            }
+    let Some(start) = (if path.is_dir() { Some(path) } else { path.parent() }) else {
+        return Ok(None);
+    };
+    for directory in start.ancestors().take(MAX_DISCOVERY_DEPTH + 1) {
+        let mut projects = fs::read_dir(directory)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|candidate| is_csharp_project_file(candidate))
+            .collect::<Vec<_>>();
+        projects.sort();
+        if projects.len() > 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "ambiguous C# project selection in {}",
+                    directory.display()
+                ),
+            ));
+        }
+        if let Some(project) = projects.pop() {
+            return Ok(Some(project));
         }
     }
-    None
+    Ok(None)
+}
+
+fn is_csharp_project_file(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("csproj" | "sln")
+    )
 }
 
 fn detect_project_language(path: &Path) -> Option<Language> {
@@ -1240,25 +1575,42 @@ fn detect_project_language(path: &Path) -> Option<Language> {
         if fs::read_dir(path)
             .ok()?
             .filter_map(Result::ok)
-            .any(|entry| {
-                matches!(
-                    entry.path().extension().and_then(|value| value.to_str()),
-                    Some("csproj" | "sln")
-                )
-            })
+            .any(|entry| is_csharp_project_file(&entry.path()))
         {
             return Some(Language::CSharp);
         }
         return None;
     }
     let name = path.file_name()?.to_str()?;
-    match name {
-        "Cargo.toml" => Some(Language::Rust),
-        "go.mod" => Some(Language::Go),
-        "tsconfig.json" => Some(Language::TypeScript),
-        _ if matches!(path.extension()?.to_str()?, "csproj" | "sln") => Some(Language::CSharp),
-        _ => None,
+    if name.eq_ignore_ascii_case("Cargo.toml") {
+        return Some(Language::Rust);
     }
+    if name.eq_ignore_ascii_case("go.mod") {
+        return Some(Language::Go);
+    }
+    if name.eq_ignore_ascii_case("tsconfig.json") {
+        return Some(Language::TypeScript);
+    }
+    if is_csharp_project_file(path) {
+        Some(Language::CSharp)
+    } else {
+        None
+    }
+}
+
+fn requires_trusted_execution(path: &Path, options: &CompilerCheckOptions) -> bool {
+    if path.is_dir() || options.project {
+        return true;
+    }
+    let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    name.eq_ignore_ascii_case("compile_commands.json")
+        || name.eq_ignore_ascii_case("Cargo.toml")
+        || name.eq_ignore_ascii_case("go.mod")
+        || name.eq_ignore_ascii_case("tsconfig.json")
+        || name.eq_ignore_ascii_case("jsconfig.json")
+        || is_csharp_project_file(path)
 }
 
 fn absolute_path(path: &Path) -> io::Result<PathBuf> {
@@ -1276,15 +1628,35 @@ fn cleanup_artifacts(plan: &CompilerInvocation) {
         } else {
             let _ = fs::remove_file(path);
         }
+        if let Some(parent) = path.parent() {
+            let owned = parent
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("ripex-compiler-"));
+            if owned {
+                let _ = fs::remove_dir_all(parent);
+            }
+        }
     }
 }
 
-fn temporary_artifact(extension: &str) -> PathBuf {
-    static NEXT_ARTIFACT: AtomicU64 = AtomicU64::new(0);
-    let sequence = NEXT_ARTIFACT.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "ripex-compiler-{}-{sequence}.{extension}",
-        std::process::id()
+fn temporary_artifact(extension: &str) -> io::Result<PathBuf> {
+    let root = std::env::temp_dir();
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    for attempt in 0_u32..100 {
+        let directory = root.join(format!("ripex-compiler-{seed:032x}-{attempt:02x}"));
+        match fs::create_dir(&directory) {
+            Ok(()) => return Ok(directory.join(format!("artifact.{extension}"))),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not create an exclusive compiler temporary directory",
     ))
 }
 
@@ -1304,7 +1676,7 @@ mod tests {
 
     #[test]
     fn compile_commands_preserve_project_specific_compiler_arguments() {
-        let root = temporary_artifact("compile-commands-test");
+        let root = temporary_artifact("compile-commands-test").unwrap();
         fs::create_dir_all(&root).unwrap();
         let source = root.join("main.c");
         fs::write(&source, "int main(void) { return 0; }").unwrap();
@@ -1330,12 +1702,21 @@ mod tests {
         )
         .unwrap();
 
-        let plans = plan_compiler_check(&root, Some(Language::C), &Default::default()).unwrap();
+        let plans = plan_compiler_check(
+            &root,
+            Some(Language::C),
+            &CompilerCheckOptions {
+                trusted_project: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let source_plans = plan_compiler_check(
             &source,
             Some(Language::C),
             &CompilerCheckOptions {
                 project: true,
+                trusted_project: true,
                 ..Default::default()
             },
         )
@@ -1396,5 +1777,42 @@ mod tests {
             "This is not the tsc command you are looking for",
             ""
         ));
+    }
+    #[test]
+    fn process_output_is_capped_and_status_is_distinct() {
+        let mut command = Command::new(if cfg!(windows) { "cmd" } else { "sh" });
+        #[cfg(windows)]
+        command.args(["/C", "for /L %i in (1,1,10000) do @echo output"]);
+        #[cfg(not(windows))]
+        command.args(["-c", "yes output"]);
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let capture = run_process(command, Duration::from_secs(5), 128, 256).unwrap();
+        assert!(capture.output_limited);
+        assert!(capture.stdout.len() <= 128);
+        assert!(capture.stdout_truncated || capture.stderr_truncated);
+    }
+
+    #[test]
+    fn timeout_cleanup_returns_within_grace_period() {
+        let mut command = Command::new(if cfg!(windows) { "cmd" } else { "sh" });
+        #[cfg(windows)]
+        command.args(["/C", "ping -n 20 127.0.0.1 > nul"]);
+        #[cfg(not(windows))]
+        command.args(["-c", "sleep 20"]);
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let started = Instant::now();
+        let capture = run_process(command, Duration::from_millis(20), 128, 256).unwrap();
+        assert!(capture.timed_out);
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn temporary_artifact_uses_an_owned_non_pid_directory() {
+        let artifact = temporary_artifact("test").unwrap();
+        let parent = artifact.parent().unwrap();
+        let name = parent.file_name().unwrap().to_string_lossy();
+        assert!(name.starts_with("ripex-compiler-"));
+        assert!(!name.contains(&std::process::id().to_string()));
+        let _ = fs::remove_dir_all(parent);
     }
 }

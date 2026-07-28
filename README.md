@@ -201,6 +201,22 @@ trips, safety limits, and zero-diagnostic fixture parsing.
 cargo test --all-targets --all-features
 ```
 
+## Verification and Safety
+
+### Resource Limits and Boundaries
+To prevent denial of service and resource exhaustion, `ripex` enforces strict limits on all parsed inputs:
+- **Maximum Input Size**: 1 MB (`MAX_INPUT_SIZE` = 1,048,576 bytes). Enforced at CLI ingestion before allocations occur.
+- **Maximum Token Count**: 200,000 tokens (`MAX_TOKENS`). Enforced during lexing.
+- **Maximum Recursion Depth**: 512 frames (`MAX_RECURSION`). Enforced in all recursive-descent parsers to prevent stack overflow.
+
+Breaching any limit produces a structured diagnostic of code `limit_exceeded` and sets `status` to `LimitExceeded`.
+
+### Trust Boundary and Compiler Safety
+The `ripex check` command executes external compilers (such as `gcc`, `clang`, `rustc`/`cargo`, `go`, `dotnet`/`csc`, `node`, `tsc`, `python`, and `mypy`) on target source code or projects.
+- **Project Execution Risk**: Running compilation check on projects (e.g., Cargo workspace, Go module, C# csproj) can execute arbitrary code via build scripts (`build.rs`), compiler plugins, or procedural macros.
+- **Explicit Trust Required**: To prevent unauthorized code execution, project-level checks and raw compiler argument passthrough require the `--trusted-project` flag. If this flag is omitted, the planner immediately returns a `PermissionDenied` error.
+- **Sandbox Recommendation**: We recommend running `ripex check` in an OS-level sandbox or containerized environment when validating untrusted third-party code.
+
 ## License
 
 MIT

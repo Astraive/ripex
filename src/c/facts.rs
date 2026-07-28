@@ -8,9 +8,8 @@ pub fn extract_facts(program: &Program) -> ExtractionResult {
     let mut calls = Vec::new();
     let mut variables = Vec::new();
 
-    walk_stmts(
+    walk_top_level(
         &program.decls,
-        None,
         &mut symbols,
         &mut imports,
         &mut calls,
@@ -39,6 +38,37 @@ pub fn extract_calls(program: &Program) -> Vec<ParsedCall> {
 
 pub fn extract_variables(program: &Program) -> Vec<ParsedVariable> {
     extract_facts(program).variables
+}
+
+/// Conditional directives are retained in the AST, but this extractor does
+/// not evaluate preprocessor expressions. Declarations in a conditional
+/// region are therefore omitted rather than being reported as active facts.
+fn walk_top_level(
+    stmts: &[Stmt],
+    symbols: &mut Vec<ParsedSymbol>,
+    imports: &mut Vec<ParsedImport>,
+    calls: &mut Vec<ParsedCall>,
+    variables: &mut Vec<ParsedVariable>,
+) {
+    let mut conditional_depth = 0usize;
+    for stmt in stmts {
+        if let Stmt::Preprocessor(directive, _) = stmt {
+            walk_stmt(stmt, None, symbols, imports, calls, variables);
+            match directive {
+                PreprocDirective::If(..)
+                | PreprocDirective::Ifdef(..)
+                | PreprocDirective::Ifndef(..) => {
+                    conditional_depth = conditional_depth.saturating_add(1);
+                }
+                PreprocDirective::Endif(..) => {
+                    conditional_depth = conditional_depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+        } else if conditional_depth == 0 {
+            walk_stmt(stmt, None, symbols, imports, calls, variables);
+        }
+    }
 }
 
 fn walk_stmts(

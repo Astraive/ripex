@@ -37,6 +37,7 @@ pub enum DiagnosticCode {
     #[cfg_attr(feature = "serde", serde(rename = "unterminated_jsx"))]
     UnterminatedJSX,
     InputTooLarge,
+    TokenLimitExceeded,
     MaxRecursionExceeded,
 }
 
@@ -76,6 +77,7 @@ impl DiagnosticCode {
             DiagnosticCode::InvalidJSX => "Invalid JSX element",
             DiagnosticCode::UnterminatedJSX => "Unterminated JSX element",
             DiagnosticCode::InputTooLarge => "Input too large",
+            DiagnosticCode::TokenLimitExceeded => "Token limit exceeded",
             DiagnosticCode::MaxRecursionExceeded => "Max recursion depth exceeded",
         }
     }

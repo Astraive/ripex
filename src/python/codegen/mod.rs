@@ -1,8 +1,14 @@
 use super::ast::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenerationError {
+    UnsupportedNode(&'static str),
+}
+
 pub struct Codegen {
     output: String,
     indent: usize,
+    error: Option<GenerationError>,
 }
 
 impl Default for Codegen {
@@ -16,16 +22,27 @@ impl Codegen {
         Self {
             output: String::new(),
             indent: 0,
+            error: None,
         }
     }
 
-    pub fn generate(&mut self, program: &Program) -> String {
+    pub fn generate(&mut self, program: &Program) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
+        self.error = None;
         for stmt in &program.stmts {
             self.emit_stmt(stmt);
         }
-        self.output.clone()
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(self.output.clone()),
+        }
+    }
+
+    fn unsupported(&mut self, node: &'static str) {
+        if self.error.is_none() {
+            self.error = Some(GenerationError::UnsupportedNode(node));
+        }
     }
 
     fn push_indent(&mut self) {
@@ -274,20 +291,11 @@ impl Codegen {
                         self.output.push_str(":\n");
                         self.suite(body);
                     }
-                    _ => {
-                        self.output.push_str("async def __ripex_async__():\n");
-                        self.indent += 1;
-                        self.emit_stmt(inner);
-                        self.indent -= 1;
-                    }
+                    _ => self.unsupported("unsupported async statement"),
                 }
                 return;
             }
-            Stmt::Block(body, _) => {
-                self.output.push_str("if True:\n");
-                self.suite(body);
-                return;
-            }
+            Stmt::Block(_, _) => self.unsupported("standalone block statement"),
         }
         self.output.push('\n');
     }
@@ -533,13 +541,7 @@ impl Codegen {
                 self.emit_comprehensions(generators);
                 self.output.push('}');
             }
-            Expr::DictComp(element, generators, _) => {
-                self.output.push('{');
-                self.emit_expr(element);
-                self.output.push_str(": None");
-                self.emit_comprehensions(generators);
-                self.output.push('}');
-            }
+            Expr::DictComp(_, _, _) => self.unsupported("dictionary comprehension"),
             Expr::Generator(element, generators, _) => {
                 self.output.push('(');
                 self.emit_expr(element);
@@ -603,8 +605,8 @@ impl Codegen {
                 self.output.push(')');
             }
             Expr::Ellipsis(_) => self.output.push_str("..."),
-            Expr::Match(subject, _, _) => self.emit_expr(subject),
-            Expr::Error(_) => self.output.push_str("None"),
+            Expr::Match(_, _, _) => self.unsupported("match expression"),
+            Expr::Error(_) => self.unsupported("error expression"),
         }
     }
 

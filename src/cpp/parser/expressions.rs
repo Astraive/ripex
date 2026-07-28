@@ -49,7 +49,7 @@ impl Parser {
             self.advance();
             let then = self.parse_expr();
             self.expect(TokenKind::Colon);
-            let else_ = self.parse_ternary();
+            let else_ = self.parse_ternary_guarded();
             cond = Expr::Ternary(
                 Box::new(cond),
                 Box::new(then),
@@ -58,6 +58,14 @@ impl Parser {
             );
         }
         cond
+    }
+    fn parse_ternary_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Error(Span::ZERO);
+        }
+        let expr = self.parse_ternary();
+        self.pop_recursion();
+        expr
     }
 
     fn parse_binary(&mut self, min_prec: u8) -> Expr {
@@ -175,7 +183,7 @@ impl Parser {
         match self.peek() {
             TokenKind::Minus => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Neg,
                     Box::new(e.clone()),
@@ -184,7 +192,7 @@ impl Parser {
             }
             TokenKind::Exclamation => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Not,
                     Box::new(e.clone()),
@@ -193,7 +201,7 @@ impl Parser {
             }
             TokenKind::Tilde => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::BitNot,
                     Box::new(e.clone()),
@@ -202,7 +210,7 @@ impl Parser {
             }
             TokenKind::Ampersand => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Ref,
                     Box::new(e.clone()),
@@ -211,7 +219,7 @@ impl Parser {
             }
             TokenKind::Star => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Deref,
                     Box::new(e.clone()),
@@ -220,7 +228,7 @@ impl Parser {
             }
             TokenKind::Plus => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::Plus,
                     Box::new(e.clone()),
@@ -229,7 +237,7 @@ impl Parser {
             }
             TokenKind::PlusPlus => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::PreInc,
                     Box::new(e.clone()),
@@ -238,7 +246,7 @@ impl Parser {
             }
             TokenKind::MinusMinus => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Unary(
                     UnaryOp::PreDec,
                     Box::new(e.clone()),
@@ -263,7 +271,7 @@ impl Parser {
             }
             TokenKind::Delete => {
                 self.advance();
-                let e = self.parse_unary();
+                let e = self.parse_unary_guarded();
                 Expr::Delete(Box::new(e), Span::new(start, self.prev_end()))
             }
             TokenKind::Sizeof => {
@@ -274,7 +282,7 @@ impl Parser {
                     self.expect(TokenKind::RParen);
                     Expr::Sizeof(Box::new(e), Span::new(start, self.prev_end()))
                 } else {
-                    let e = self.parse_unary();
+                    let e = self.parse_unary_guarded();
                     Expr::Sizeof(Box::new(e.clone()), Span::new(start, e.span().end))
                 }
             }
@@ -316,6 +324,14 @@ impl Parser {
             TokenKind::Lambda => self.parse_lambda(start),
             _ => self.parse_postfix(),
         }
+    }
+    fn parse_unary_guarded(&mut self) -> Expr {
+        if self.bump_recursion().is_err() {
+            return Expr::Error(Span::ZERO);
+        }
+        let expr = self.parse_unary();
+        self.pop_recursion();
+        expr
     }
 
     fn parse_lambda(&mut self, start: Pos) -> Expr {

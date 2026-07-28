@@ -24,7 +24,10 @@ pub mod python;
 pub mod rust;
 
 use std::collections::HashMap;
+use std::fmt;
 use std::path::Path;
+
+use crate::diagnostics::DiagnosticCode;
 
 pub use facts::*;
 
@@ -78,7 +81,9 @@ impl Language {
             "py" | "pyi" => Some(Self::Python),
             "go" => Some(Self::Go),
             "rs" => Some(Self::Rust),
-            "c" | "h" => Some(Self::C),
+            // C and C++ both commonly use .h; automatic detection must not
+            // silently choose one. Use an explicit language selector instead.
+            "c" => Some(Self::C),
             "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
             "cs" => Some(Self::CSharp),
             _ => None,
@@ -120,33 +125,187 @@ impl ExtractionResult {
             variables: Vec::new(),
         }
     }
+
+    /// Remove malformed call facts before exposing extraction results publicly.
+    fn retain_valid_calls(&mut self) {
+        self.calls
+            .retain(|call| !call.callee_text.trim().is_empty());
+    }
 }
 
+/// Completeness of a parser result and its semantic facts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum ParseStatus {
+    /// Parsing completed without diagnostics.
+    Complete,
+    /// Parsing recovered from one or more syntax diagnostics.
+    Recovered,
+    /// A configured parser resource limit was reached.
+    LimitExceeded,
+    /// Parsing failed before a trustworthy program could be produced.
+    Failed,
+}
+
+impl ParseStatus {
+    pub const fn is_complete(self) -> bool {
+        matches!(self, Self::Complete)
+    }
+
+    pub const fn is_incomplete(self) -> bool {
+        !self.is_complete()
+    }
+}
+
+fn status_from_errors(errors: &[diagnostics::ParseError]) -> ParseStatus {
+    if errors.is_empty() {
+        ParseStatus::Complete
+    } else if errors.iter().any(|error| {
+        matches!(
+            error.code,
+            DiagnosticCode::InputTooLarge
+                | DiagnosticCode::TokenLimitExceeded
+                | DiagnosticCode::MaxRecursionExceeded
+        )
+    }) {
+        ParseStatus::LimitExceeded
+    } else {
+        ParseStatus::Recovered
+    }
+}
+
+/// Error returned when facts are requested from an incompatible or incomplete
+/// parse result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ExtractionError {
+    /// The result was produced by a different language parser or mode.
+    ParserMismatch {
+        expected_language: Language,
+        actual_language: Language,
+        expected_mode: String,
+        actual_mode: String,
+    },
+    /// Strict extraction rejects recovered or otherwise incomplete results.
+    IncompleteParse { status: ParseStatus },
+}
+
+impl fmt::Display for ExtractionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ParserMismatch {
+                expected_language,
+                actual_language,
+                expected_mode,
+                actual_mode,
+            } => write!(
+                f,
+                "parser mismatch: expected {} ({expected_mode}), got {} ({actual_mode})",
+                expected_language.id(),
+                actual_language.id(),
+            ),
+            Self::IncompleteParse { status } => {
+                write!(f, "cannot perform strict extraction from {status:?} parse")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExtractionError {}
+
+/// Parser implementation for one language and effective parser mode.
 pub trait LanguageParser: Send + Sync {
     fn language_id(&self) -> &'static str;
+    fn language(&self) -> Language;
+    fn parser_mode(&self) -> &'static str {
+        "default"
+    }
     fn extensions(&self) -> &'static [&'static str];
     fn parse(&self, source: &str) -> ParseResult;
-    fn symbols(&self, result: &ParseResult) -> Vec<ParsedSymbol> {
-        self.extract(result).symbols
+    fn extract_unchecked(&self, result: &ParseResult) -> ExtractionResult;
+
+    fn validate_result(&self, result: &ParseResult) -> Result<(), ExtractionError> {
+        if result.language != self.language()
+            || result.parser_mode != self.parser_mode()
+        {
+            return Err(ExtractionError::ParserMismatch {
+                expected_language: self.language(),
+                actual_language: result.language,
+                expected_mode: self.parser_mode().to_string(),
+                actual_mode: result.parser_mode.clone(),
+            });
+        }
+        Ok(())
     }
-    fn imports(&self, result: &ParseResult) -> Vec<ParsedImport> {
-        self.extract(result).imports
+
+    /// Extract facts only from a complete parse result.
+    fn extract(&self, result: &ParseResult) -> Result<ExtractionResult, ExtractionError> {
+        self.validate_result(result)?;
+        if !result.status.is_complete() {
+            return Err(ExtractionError::IncompleteParse {
+                status: result.status,
+            });
+        }
+        let mut extracted = self.extract_unchecked(result);
+        extracted.retain_valid_calls();
+        Ok(extracted)
     }
-    fn calls(&self, result: &ParseResult) -> Vec<ParsedCall> {
-        self.extract(result).calls
+
+    /// Explicitly opt into facts recovered from an incomplete parse.
+    fn extract_best_effort(
+        &self,
+        result: &ParseResult,
+    ) -> Result<ExtractionResult, ExtractionError> {
+        self.validate_result(result)?;
+        let mut extracted = self.extract_unchecked(result);
+        extracted.retain_valid_calls();
+        Ok(extracted)
     }
-    fn variables(&self, result: &ParseResult) -> Vec<ParsedVariable> {
-        self.extract(result).variables
+
+    fn symbols(&self, result: &ParseResult) -> Result<Vec<ParsedSymbol>, ExtractionError> {
+        Ok(self.extract(result)?.symbols)
     }
-    fn extract(&self, result: &ParseResult) -> ExtractionResult;
+    fn imports(&self, result: &ParseResult) -> Result<Vec<ParsedImport>, ExtractionError> {
+        Ok(self.extract(result)?.imports)
+    }
+    fn calls(&self, result: &ParseResult) -> Result<Vec<ParsedCall>, ExtractionError> {
+        Ok(self.extract(result)?.calls)
+    }
+    fn variables(&self, result: &ParseResult) -> Result<Vec<ParsedVariable>, ExtractionError> {
+        Ok(self.extract(result)?.variables)
+    }
 }
 
+/// Result of parsing source text, branded with its producing parser.
 pub struct ParseResult {
     pub source: String,
     pub errors: Vec<diagnostics::ParseError>,
     /// Source comments captured by parsers that support comment retention.
     pub comments: Vec<ParsedComment>,
     pub ast: Program,
+    /// Completeness and resource status of this parse.
+    pub status: ParseStatus,
+    /// Language grammar that produced this result.
+    pub language: Language,
+    /// Effective parser mode (for example `typescript-jsx-module`).
+    pub parser_mode: String,
+}
+
+impl ParseResult {
+    pub const fn is_complete(&self) -> bool {
+        self.status.is_complete()
+    }
+
+    pub const fn producer_language(&self) -> Language {
+        self.language
+    }
+
+    pub fn effective_parser_mode(&self) -> &str {
+        &self.parser_mode
+    }
 }
 
 pub enum Program {
@@ -166,27 +325,38 @@ pub enum Program {
     CSharp(csharp::Program),
 }
 
-/// Returns a parser for `language_id`, picking TypeScript-aware parsing
-/// when `ext` indicates a TS file (`.ts`/`.tsx`/`.mts`/`.cts`).
-pub fn parser_for_ext(language_id: &str, extension: &str) -> Option<Box<dyn LanguageParser>> {
-    let language = Language::from_id(language_id)?;
-    #[cfg(feature = "lang-js")]
-    let ext = normalized_extension(extension);
+/// Select a parser by an explicit language and an optional compatible
+/// extension. The language is authoritative: a `.ts` extension cannot turn
+/// an explicitly selected JavaScript parser into TypeScript (and vice versa).
+pub fn parser_for_language(
+    language: Language,
+    extension: Option<&str>,
+) -> Option<Box<dyn LanguageParser>> {
     #[cfg(not(feature = "lang-js"))]
-    let _ = extension;
+    let _ = &extension;
+    let extension = extension.map(normalized_extension);
     match language {
         #[cfg(feature = "lang-js")]
-        Language::JavaScript | Language::TypeScript => {
-            let effective_ext = if ext.is_empty() {
-                match language {
-                    Language::TypeScript => "ts",
-                    Language::JavaScript => "js",
-                    _ => unreachable!(),
-                }
-            } else {
-                ext.as_str()
+        Language::JavaScript => {
+            let parser = match extension.as_deref() {
+                Some("js" | "mjs" | "ts" | "mts" | "cts") => JavascriptParser::module(),
+                Some("jsx" | "tsx") => JavascriptParser::with_jsx(),
+                Some("cjs") | None => JavascriptParser::new(),
+                // Unknown extensions cannot change the explicit JavaScript
+                // grammar or source mode.
+                Some(_) => JavascriptParser::new(),
             };
-            Some(Box::new(JavascriptParser::for_extension(effective_ext)))
+            Some(Box::new(parser))
+        }
+        #[cfg(feature = "lang-js")]
+        Language::TypeScript => {
+            let parser = match extension.as_deref() {
+                Some("tsx") | Some("jsx") => JavascriptParser::with_typescript_jsx(),
+                // An explicit TypeScript selection remains authoritative even
+                // when the physical file uses a JavaScript extension.
+                _ => JavascriptParser::with_typescript(),
+            };
+            Some(Box::new(parser))
         }
         #[cfg(feature = "lang-python")]
         Language::Python => Some(Box::new(PythonParser::new())),
@@ -205,8 +375,26 @@ pub fn parser_for_ext(language_id: &str, extension: &str) -> Option<Box<dyn Lang
     }
 }
 
+/// Convenience selector for callers that already hold a physical extension.
+pub fn parser_for_language_ext(
+    language: Language,
+    extension: &str,
+) -> Option<Box<dyn LanguageParser>> {
+    parser_for_language(
+        language,
+        (!extension.trim().is_empty()).then_some(extension),
+    )
+}
+
+/// Returns a parser for `language_id` with an optional compatible extension.
+pub fn parser_for_ext(language_id: &str, extension: &str) -> Option<Box<dyn LanguageParser>> {
+    let language = Language::from_id(language_id)?;
+    parser_for_language(language, (!extension.trim().is_empty()).then_some(extension))
+}
+
 pub fn parser_for(language_id: &str) -> Option<Box<dyn LanguageParser>> {
-    parser_for_ext(language_id, "")
+    let language = Language::from_id(language_id)?;
+    parser_for_language(language, None)
 }
 
 pub fn registry() -> HashMap<&'static str, Box<dyn LanguageParser>> {
@@ -214,6 +402,8 @@ pub fn registry() -> HashMap<&'static str, Box<dyn LanguageParser>> {
     let mut map: HashMap<&'static str, Box<dyn LanguageParser>> = HashMap::new();
     #[cfg(feature = "lang-js")]
     map.insert("javascript", Box::new(JavascriptParser::new()));
+    #[cfg(feature = "lang-js")]
+    map.insert("typescript", Box::new(JavascriptParser::with_typescript()));
     #[cfg(feature = "lang-python")]
     map.insert("python", Box::new(PythonParser::new()));
     #[cfg(feature = "lang-go")]
@@ -250,19 +440,26 @@ macro_rules! lang_parser_impl {
             fn language_id(&self) -> &'static str {
                 $id
             }
+            fn language(&self) -> Language {
+                Language::$variant
+            }
             fn extensions(&self) -> &'static [&'static str] {
                 $exts
             }
             fn parse(&self, source: &str) -> ParseResult {
                 let (ast, errors) = $lang::parse_program(source);
+                let status = status_from_errors(&errors);
                 ParseResult {
                     source: source.to_string(),
                     errors,
                     comments: Vec::new(),
                     ast: Program::$variant(ast),
+                    status,
+                    language: Language::$variant,
+                    parser_mode: "default".to_string(),
                 }
             }
-            fn extract(&self, result: &ParseResult) -> ExtractionResult {
+            fn extract_unchecked(&self, result: &ParseResult) -> ExtractionResult {
                 #[allow(unreachable_patterns)]
                 match &result.ast {
                     Program::$variant(ast) => $lang::facts::extract_facts(ast),
@@ -299,10 +496,23 @@ pub struct JavascriptParser {
 }
 
 #[cfg(feature = "lang-js")]
+impl Default for JavascriptParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "lang-js")]
 impl JavascriptParser {
     /// Plain JavaScript (Script mode, no TypeScript syntax).
     pub fn new() -> Self {
         let mut options = js::config::ParserOptions::default();
+        options.features.import_attributes = true;
+        JavascriptParser { options }
+    }
+    /// JavaScript module parsing without JSX or TypeScript syntax.
+    pub fn module() -> Self {
+        let mut options = js::config::ParserOptions::module();
         options.features.import_attributes = true;
         JavascriptParser { options }
     }
@@ -346,16 +556,36 @@ impl JavascriptParser {
 }
 
 #[cfg(feature = "lang-js")]
-impl Default for JavascriptParser {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(feature = "lang-js")]
 impl LanguageParser for JavascriptParser {
     fn language_id(&self) -> &'static str {
-        "javascript"
+        if self.options.features.typescript {
+            "typescript"
+        } else {
+            "javascript"
+        }
+    }
+    fn language(&self) -> Language {
+        if self.options.features.typescript {
+            Language::TypeScript
+        } else {
+            Language::JavaScript
+        }
+    }
+    fn parser_mode(&self) -> &'static str {
+        match (
+            self.options.features.typescript,
+            self.options.features.jsx,
+            self.options.is_module(),
+        ) {
+            (true, true, true) => "typescript-jsx-module",
+            (true, false, true) => "typescript-module",
+            (true, true, false) => "typescript-jsx-script",
+            (true, false, false) => "typescript-script",
+            (false, true, true) => "javascript-jsx-module",
+            (false, false, true) => "javascript-module",
+            (false, true, false) => "javascript-jsx-script",
+            (false, false, false) => "javascript-script",
+        }
     }
     fn extensions(&self) -> &'static [&'static str] {
         &["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"]
@@ -363,6 +593,7 @@ impl LanguageParser for JavascriptParser {
     fn parse(&self, source: &str) -> ParseResult {
         let (program, errors, arena, comments) =
             js::parser::parse_program_with_comments(source, &self.options);
+        let status = status_from_errors(&errors);
         ParseResult {
             source: source.to_string(),
             errors,
@@ -381,9 +612,12 @@ impl LanguageParser for JavascriptParser {
                 })
                 .collect(),
             ast: Program::Js(program, arena),
+            status,
+            language: self.language(),
+            parser_mode: self.parser_mode().to_string(),
         }
     }
-    fn extract(&self, result: &ParseResult) -> ExtractionResult {
+    fn extract_unchecked(&self, result: &ParseResult) -> ExtractionResult {
         #[allow(unreachable_patterns)]
         match &result.ast {
             Program::Js(program, arena) => js::facts::extract_facts(program, arena),

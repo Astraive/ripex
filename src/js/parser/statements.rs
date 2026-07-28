@@ -215,14 +215,12 @@ fn parse_switch(parser: &mut Parser) -> SwitchStmt {
                 test,
                 consequent,
             });
-        } else {
-            if let Some(stmt) = parse_stmt(parser) {
-                if let Some(last) = cases.last_mut() {
-                    last.consequent.push(stmt);
-                }
-            } else {
-                break;
+        } else if let Some(stmt) = parse_stmt(parser) {
+            if let Some(last) = cases.last_mut() {
+                last.consequent.push(stmt);
             }
+        } else {
+            break;
         }
     }
     parser.expect(TokenKind::RBrace).ok();

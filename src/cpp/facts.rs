@@ -173,6 +173,9 @@ fn walk_decl(decl: &Decl, result: &mut ExtractionResult, class_name: Option<&str
             var.is_constexpr = vd.is_constexpr;
             var.is_extern = vd.is_extern;
             result.variables.push(var);
+            if let Some(init) = &vd.init {
+                walk_expr(init, result);
+            }
         }
         Decl::Namespace(name, decls, span) => {
             result.symbols.push(
@@ -429,14 +432,22 @@ fn walk_expr(expr: &Expr, result: &mut ExtractionResult) {
             }
             walk_block(&lambda.body, result, None);
         }
-        Expr::New(e, args, _) => {
+        Expr::New(e, args, span) => {
+            let type_name = expr_to_string(e);
+            if !type_name.is_empty() {
+                result.calls.push(
+                    ParsedCall::builder(CallKind::ConstructorCall, &type_name)
+                        .pos(span.start.line, span.start.column)
+                        .build(),
+                );
+            }
             walk_expr(e, result);
             for arg in args {
                 walk_expr(arg, result);
             }
         }
-        Expr::Delete(e, _) => walk_expr(e, result),
         Expr::Paren(e, _) => walk_expr(e, result),
+        Expr::Delete(e, _) => walk_expr(e, result),
         Expr::Assign(lhs, rhs, _) => {
             walk_expr(lhs, result);
             walk_expr(rhs, result);

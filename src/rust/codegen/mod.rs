@@ -1,8 +1,14 @@
 use super::ast::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenerationError {
+    UnsupportedNode(&'static str),
+}
+
 pub struct Codegen {
     output: String,
     indent: usize,
+    error: Option<GenerationError>,
 }
 
 impl Default for Codegen {
@@ -16,16 +22,30 @@ impl Codegen {
         Self {
             output: String::new(),
             indent: 0,
+            error: None,
         }
     }
 
-    pub fn generate(&mut self, program: &Program) -> String {
+    pub fn generate(
+        &mut self,
+        program: &Program,
+    ) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
+        self.error = None;
         for item in &program.items {
             self.item(item);
         }
-        self.output.clone()
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(self.output.clone()),
+        }
+    }
+
+    fn unsupported(&mut self, node: &'static str) {
+        if self.error.is_none() {
+            self.error = Some(GenerationError::UnsupportedNode(node));
+        }
     }
 
     fn ind(&mut self) {
@@ -518,7 +538,7 @@ impl Codegen {
                 self.output.push_str(" as ");
                 self.expr(t);
             }
-            Expr::Error(_) => self.output.push_str("()"),
+            Expr::Error(_) => self.unsupported("error expression"),
         }
     }
     fn block_inline(&mut self, value: &Block) {
@@ -538,7 +558,7 @@ impl Codegen {
                     }
                     self.output.push_str("; ");
                 }
-                Stmt::Item(_, _) | Stmt::Empty(_) => {}
+            Stmt::Item(_, _) | Stmt::Empty(_) => self.unsupported("unsupported inline statement"),
             }
         }
         self.output.push('}');

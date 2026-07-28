@@ -331,16 +331,69 @@ impl Parser {
     fn parse_use_item(&mut self) -> Item {
         let start = self.peek_token().span.start;
         self.advance();
-        let path_str = self.expect_ident();
-        let path = UsePath::Simple(path_str, Span::new(start, self.prev_end()));
+        let path = self.parse_use_tree(String::new(), start);
         self.expect_semicolon();
-        Item::Use(
-            UseDecl {
-                path,
-                span: Span::new(start, self.prev_end()),
-            },
-            Span::new(start, self.prev_end()),
-        )
+        let span = Span::new(start, self.prev_end());
+        Item::Use(UseDecl { path, span }, span)
+    }
+
+    fn parse_use_tree(&mut self, prefix: String, start: crate::span::Pos) -> UsePath {
+        let mut path = prefix;
+        loop {
+            let segment = match self.peek() {
+                TokenKind::Ident => self.expect_ident(),
+                TokenKind::Self_ => {
+                    self.advance();
+                    "self".to_string()
+                }
+                TokenKind::Super => {
+                    self.advance();
+                    "super".to_string()
+                }
+                TokenKind::Crate => {
+                    self.advance();
+                    "crate".to_string()
+                }
+                _ => break,
+            };
+            if !path.is_empty() {
+                path.push_str("::");
+            }
+            path.push_str(&segment);
+            if self.peek() != TokenKind::ColonColon {
+                break;
+            }
+            self.advance();
+            if self.peek() == TokenKind::LBrace {
+                self.advance();
+                let mut children = Vec::new();
+                while self.peek() != TokenKind::RBrace && self.peek() != TokenKind::Eof {
+                    children.push(self.parse_use_tree(String::new(), start));
+                    if self.peek() == TokenKind::Comma {
+                        self.advance();
+                    } else if self.peek() != TokenKind::RBrace {
+                        // Ensure malformed trees still make progress and are
+                        // consumed atomically through the statement semicolon.
+                        self.advance();
+                    }
+                }
+                self.expect(TokenKind::RBrace);
+                return UsePath::Nested(path, children, Span::new(start, self.prev_end()));
+            }
+            if self.peek() == TokenKind::Star {
+                self.advance();
+                return UsePath::Glob(path, Span::new(start, self.prev_end()));
+            }
+        }
+        if self.peek() == TokenKind::Star {
+            self.advance();
+            return UsePath::Glob(path, Span::new(start, self.prev_end()));
+        }
+        if path == "self" {
+            UsePath::Self_(path, Span::new(start, self.prev_end()))
+        } else {
+            UsePath::Simple(path, Span::new(start, self.prev_end()))
+        }
     }
 
     fn parse_mod_item(&mut self) -> Item {
@@ -437,6 +490,21 @@ impl Parser {
         )
     }
 
+    fn parse_macro_item(&mut self) -> Item {
+        let start = self.peek_token().span.start;
+        let name = self.expect_ident();
+        self.expect(TokenKind::Exclamation);
+        let body = match self.peek() {
+            TokenKind::LParen => self.parse_delimited_group(TokenKind::LParen, TokenKind::RParen),
+            TokenKind::LBracket => self.parse_delimited_group(TokenKind::LBracket, TokenKind::RBracket),
+            TokenKind::LBrace => self.parse_delimited_group(TokenKind::LBrace, TokenKind::RBrace),
+            _ => String::new(),
+        };
+        self.expect_semicolon();
+        let span = Span::new(start, self.prev_end());
+        Item::Macro(MacroInvocation { name, body, span }, span)
+    }
+
     pub fn parse_item(&mut self) -> Item {
         match self.peek() {
             TokenKind::Fn => self.parse_fn_item(),
@@ -452,11 +520,22 @@ impl Parser {
             TokenKind::Pub => self.parse_pub_item(),
             TokenKind::Unsafe => self.parse_unsafe_item(),
             TokenKind::Extern => self.parse_extern_item(),
+            TokenKind::Ident
+                if self.peek_ahead(1) == TokenKind::Exclamation
+                    && matches!(
+                        self.peek_ahead(2),
+                        TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace
+                    ) =>
+            {
+                self.parse_macro_item()
+            }
             _ => {
+                // Keep an unsupported token recoverable without fabricating a
+                // semantic macro invocation from punctuation or delimiters.
                 let tok = self.advance();
                 Item::Macro(
                     MacroInvocation {
-                        name: tok.value.clone(),
+                        name: String::new(),
                         body: String::new(),
                         span: tok.span,
                     },

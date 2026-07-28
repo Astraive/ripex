@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 (2026-07-28)
 
 - Clarified Ripex's parser-and-facts focus: external toolchain validation is
   optional and remains separate from the in-process structural parsers.

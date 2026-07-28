@@ -150,8 +150,22 @@ fn test_associated_fn() {
     assert!(!r.symbols.is_empty());
 }
 #[test]
-fn test_import_nested() {
-    parse_program(fixtures::IMPORT_NESTED);
+fn test_import_nested_is_atomic_and_has_no_blank_calls() {
+    let (program, errors) = parse_program(fixtures::IMPORT_NESTED);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = facts::extract_facts(&program);
+    let names: Vec<&str> = result.imports.iter().map(|import| import.source.as_str()).collect();
+    assert!(names.contains(&"std::io"), "missing self import: {:?}", names);
+    assert!(
+        names.contains(&"std::io::Read"),
+        "missing nested import: {:?}",
+        names
+    );
+    assert!(
+        result.calls.iter().all(|call| !call.callee_text.is_empty()),
+        "blank call fact emitted: {:?}",
+        result.calls
+    );
 }
 #[test]
 fn test_fn_async() {

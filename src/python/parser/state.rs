@@ -124,11 +124,17 @@ impl Parser {
     pub fn bump_recursion(&mut self) -> Result<(), ParseError> {
         self.depth += 1;
         if self.depth > crate::limits::MAX_RECURSION {
-            let err = ParseError::with_message(
-                DiagnosticCode::InputTooLarge,
-                Span::ZERO,
-                "max recursion depth exceeded",
+            let err = ParseError::new(
+                DiagnosticCode::MaxRecursionExceeded,
+                self.peek_token().span,
             );
+            if !self
+                .errors
+                .iter()
+                .any(|existing| existing.code == DiagnosticCode::MaxRecursionExceeded)
+            {
+                self.errors.push(err.clone());
+            }
             self.depth -= 1;
             return Err(err);
         }

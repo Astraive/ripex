@@ -4,12 +4,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "== build =="
-cargo build --release
+cargo build --release --locked
 
 echo "== unit + integration tests =="
-cargo test --release
+cargo test --release --locked
 
 echo "== end-to-end corpus gate (tests/lang-test) =="
-cargo test --release --test ripex_lang_test_repos -- --nocapture --test-threads=1
+cargo test --release --locked --test ripex_lang_test_repos -- --nocapture --test-threads=1
 
 echo "== done =="

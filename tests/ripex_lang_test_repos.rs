@@ -125,7 +125,9 @@ fn try_file(path: &Path, lang_static: &'static str, ext: &str) -> Option<FileRes
                 None => return,
             };
             let pr: ParseResult = parser.parse(&src);
-            let ex: ExtractionResult = parser.extract(&pr);
+            let ex: ExtractionResult = parser
+                .extract_best_effort(&pr)
+                .expect("best-effort extraction must preserve the public contract");
             let counts = (
                 ex.symbols.len(),
                 ex.imports.len(),

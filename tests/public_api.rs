@@ -9,7 +9,7 @@ fn detects_all_documented_extensions_case_insensitively() {
         ("stub.pyi", Language::Python),
         ("main.go", Language::Go),
         ("lib.rs", Language::Rust),
-        ("header.h", Language::C),
+        ("header.c", Language::C),
         ("header.hxx", Language::Cpp),
         ("Program.cs", Language::CSharp),
     ];
@@ -17,6 +17,8 @@ fn detects_all_documented_extensions_case_insensitively() {
     for (path, expected) in cases {
         assert_eq!(detect_language(path), Some(expected), "{path}");
     }
+    assert_eq!(detect_language("header.h"), None);
+
 }
 
 #[cfg(feature = "lang-js")]
@@ -97,7 +99,7 @@ fn every_extracted_fact_kind_is_serializable() {
     let result = parser.parse(
         "import { value } from 'pkg'; const answer: number = value(); export function f() {}",
     );
-    let facts = parser.extract(&result);
+    let facts = parser.extract(&result).expect("complete extraction");
     let json = serde_json::to_value(facts).expect("serialize extraction result");
 
     assert!(json["symbols"].is_array());

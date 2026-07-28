@@ -62,7 +62,30 @@ impl Parser {
                 self.advance();
                 Stmt::Empty(Span::ZERO)
             }
-            TokenKind::Hash | TokenKind::Newline => {
+            TokenKind::Hash => {
+                let directive = self.advance();
+                let raw = directive.value.trim();
+                if let Some(rest) = raw.strip_prefix("#include") {
+                    let path = rest
+                        .trim()
+                        .trim_start_matches('<')
+                        .trim_end_matches('>')
+                        .trim_matches('"')
+                        .to_string();
+                    let span = Span::new(start, directive.span.end);
+                    if !path.is_empty() {
+                        Stmt::Decl(Decl::Using(path, span), span)
+                    } else {
+                        Stmt::Empty(span)
+                    }
+                } else {
+                    // Non-include directives are consumed as a single lexer
+                    // token; the AST has no directive node, so do not invent
+                    // declaration/import facts for them.
+                    Stmt::Empty(directive.span)
+                }
+            }
+            TokenKind::Newline => {
                 self.advance();
                 Stmt::Empty(Span::ZERO)
             }
@@ -120,37 +143,35 @@ impl Parser {
                 if self.peek() == TokenKind::LParen && matches!(&expr, Expr::Ident(_, _)) {
                     self.pos -= 1;
                     self.parse_declaration()
-                } else {
-                    if matches!(
-                        self.peek(),
-                        TokenKind::Eq
-                            | TokenKind::PlusEq
-                            | TokenKind::MinusEq
-                            | TokenKind::StarEq
-                            | TokenKind::SlashEq
-                            | TokenKind::PercentEq
-                            | TokenKind::AmpersandEq
-                            | TokenKind::PipeEq
-                            | TokenKind::CaretEq
-                            | TokenKind::LtLtEq
-                            | TokenKind::GtGtEq
-                    ) {
-                        self.advance();
-                        let val = self.parse_expr();
-                        self.expect(TokenKind::Semicolon);
-                        Stmt::Expr(
-                            Expr::Assign(
-                                Box::new(expr),
-                                Box::new(val),
-                                Span::new(start, self.prev_end()),
-                            ),
+                } else if matches!(
+                    self.peek(),
+                    TokenKind::Eq
+                        | TokenKind::PlusEq
+                        | TokenKind::MinusEq
+                        | TokenKind::StarEq
+                        | TokenKind::SlashEq
+                        | TokenKind::PercentEq
+                        | TokenKind::AmpersandEq
+                        | TokenKind::PipeEq
+                        | TokenKind::CaretEq
+                        | TokenKind::LtLtEq
+                        | TokenKind::GtGtEq
+                ) {
+                    self.advance();
+                    let val = self.parse_expr();
+                    self.expect(TokenKind::Semicolon);
+                    Stmt::Expr(
+                        Expr::Assign(
+                            Box::new(expr),
+                            Box::new(val),
                             Span::new(start, self.prev_end()),
-                        )
-                    } else {
-                        self.expect(TokenKind::Semicolon);
-                        let span = expr.span();
-                        Stmt::Expr(expr, span)
-                    }
+                        ),
+                        Span::new(start, self.prev_end()),
+                    )
+                } else {
+                    self.expect(TokenKind::Semicolon);
+                    let span = expr.span();
+                    Stmt::Expr(expr, span)
                 }
             }
         };

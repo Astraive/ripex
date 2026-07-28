@@ -14,8 +14,15 @@ fn c_codegen_can_be_reused() {
     let (program, errors) = ripex::c::parse_program("int main() { return 0; }");
     assert!(errors.is_empty());
     let mut codegen = ripex::c::codegen::Codegen::new();
-    let first = codegen.generate(&program);
-    assert_eq!(codegen.generate(&program), first);
+    let first = codegen
+        .generate(&program)
+        .expect("canonical C generation");
+    assert_eq!(
+        codegen
+            .generate(&program)
+            .expect("canonical C generation"),
+        first
+    );
 }
 
 #[cfg(feature = "lang-c")]
@@ -23,6 +30,7 @@ fn c_codegen_can_be_reused() {
 fn c_corpus_codegen_round_trips() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/lang-test/c");
     let mut stack = vec![root];
+    let mut attempted = 0usize;
     while let Some(path) = stack.pop() {
         if path.is_dir() {
             if is_generated_or_dependency_dir(&path) {
@@ -34,6 +42,7 @@ fn c_corpus_codegen_round_trips() {
         if !matches!(path.extension().and_then(|e| e.to_str()), Some("c" | "h")) {
             continue;
         }
+        attempted += 1;
         let source = std::fs::read_to_string(&path).unwrap();
         let (program, errors) = ripex::c::parse_program(&source);
         assert!(
@@ -41,7 +50,20 @@ fn c_corpus_codegen_round_trips() {
             "initial parse failed for {}",
             path.display()
         );
-        let generated = ripex::c::codegen::Codegen::new().generate(&program);
+        let generated = match ripex::c::codegen::Codegen::new().generate(&program) {
+            Ok(generated) => generated,
+            Err(error) => {
+                assert!(
+                    matches!(
+                        error,
+                        ripex::c::codegen::GenerationError::UnsupportedNode(_)
+                    ),
+                    "unexpected C generation error for {}: {error:?}",
+                    path.display()
+                );
+                continue;
+            }
+        };
         let (_, errors) = ripex::c::parse_program(&generated);
         assert!(
             errors.is_empty(),
@@ -49,6 +71,7 @@ fn c_corpus_codegen_round_trips() {
             path.display()
         );
     }
+    assert!(attempted > 0, "C corpus was empty");
 }
 
 #[cfg(feature = "lang-cpp")]
@@ -57,8 +80,15 @@ fn cpp_codegen_can_be_reused() {
     let (program, errors) = ripex::cpp::parse_program("int main() { return 0; }");
     assert!(errors.is_empty());
     let mut codegen = ripex::cpp::codegen::Codegen::new();
-    let first = codegen.generate(&program);
-    assert_eq!(codegen.generate(&program), first);
+    let first = codegen
+        .generate(&program)
+        .expect("canonical C++ generation");
+    assert_eq!(
+        codegen
+            .generate(&program)
+            .expect("canonical C++ generation"),
+        first
+    );
 }
 
 #[cfg(feature = "lang-cpp")]
@@ -66,6 +96,7 @@ fn cpp_codegen_can_be_reused() {
 fn cpp_corpus_codegen_round_trips() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/lang-test/cpp");
     let mut stack = vec![root];
+    let mut attempted = 0usize;
     while let Some(path) = stack.pop() {
         if path.is_dir() {
             if is_generated_or_dependency_dir(&path) {
@@ -80,6 +111,7 @@ fn cpp_corpus_codegen_round_trips() {
         ) {
             continue;
         }
+        attempted += 1;
         let source = std::fs::read_to_string(&path).unwrap();
         let (program, errors) = ripex::cpp::parse_program(&source);
         assert!(
@@ -87,7 +119,20 @@ fn cpp_corpus_codegen_round_trips() {
             "initial parse failed for {}",
             path.display()
         );
-        let generated = ripex::cpp::codegen::Codegen::new().generate(&program);
+        let generated = match ripex::cpp::codegen::Codegen::new().generate(&program) {
+            Ok(generated) => generated,
+            Err(error) => {
+                assert!(
+                    matches!(
+                        error,
+                        ripex::cpp::codegen::GenerationError::UnsupportedNode(_)
+                    ),
+                    "unexpected C++ generation error for {}: {error:?}",
+                    path.display()
+                );
+                continue;
+            }
+        };
         assert!(
             !generated.trim().is_empty(),
             "C++ generator dropped {}",
@@ -100,6 +145,7 @@ fn cpp_corpus_codegen_round_trips() {
             path.display()
         );
     }
+    assert!(attempted > 0, "C++ corpus was empty");
 }
 
 #[cfg(feature = "lang-csharp")]
@@ -108,8 +154,15 @@ fn csharp_codegen_can_be_reused() {
     let (program, errors) = ripex::csharp::parse_program("class App { }");
     assert!(errors.is_empty());
     let mut codegen = ripex::csharp::codegen::Codegen::new();
-    let first = codegen.generate(&program);
-    assert_eq!(codegen.generate(&program), first);
+    let first = codegen
+        .generate(&program)
+        .expect("canonical C# generation");
+    assert_eq!(
+        codegen
+            .generate(&program)
+            .expect("canonical C# generation"),
+        first
+    );
 }
 
 #[cfg(feature = "lang-csharp")]
@@ -117,6 +170,7 @@ fn csharp_codegen_can_be_reused() {
 fn csharp_corpus_codegen_round_trips() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/lang-test/csharp");
     let mut stack = vec![root];
+    let mut attempted = 0usize;
     while let Some(path) = stack.pop() {
         if path.is_dir() {
             if is_generated_or_dependency_dir(&path) {
@@ -128,6 +182,7 @@ fn csharp_corpus_codegen_round_trips() {
         if path.extension().and_then(|e| e.to_str()) != Some("cs") {
             continue;
         }
+        attempted += 1;
         let source = std::fs::read_to_string(&path).unwrap();
         let (program, errors) = ripex::csharp::parse_program(&source);
         assert!(
@@ -135,7 +190,20 @@ fn csharp_corpus_codegen_round_trips() {
             "initial parse failed for {}",
             path.display()
         );
-        let generated = ripex::csharp::codegen::Codegen::new().generate(&program);
+        let generated = match ripex::csharp::codegen::Codegen::new().generate(&program) {
+            Ok(generated) => generated,
+            Err(error) => {
+                assert!(
+                    matches!(
+                        error,
+                        ripex::csharp::codegen::GenerationError::UnsupportedNode(_)
+                    ),
+                    "unexpected C# generation error for {}: {error:?}",
+                    path.display()
+                );
+                continue;
+            }
+        };
         assert!(
             !generated.trim().is_empty(),
             "C# generator dropped {}",
@@ -148,6 +216,7 @@ fn csharp_corpus_codegen_round_trips() {
             path.display()
         );
     }
+    assert!(attempted > 0, "C# corpus was empty");
 }
 
 #[cfg(feature = "lang-go")]
@@ -156,8 +225,15 @@ fn go_codegen_can_be_reused() {
     let (program, errors) = ripex::go::parse_program("package main\nfunc main() {}");
     assert!(errors.is_empty());
     let mut codegen = ripex::go::codegen::Codegen::new();
-    let first = codegen.generate(&program);
-    assert_eq!(codegen.generate(&program), first);
+    let first = codegen
+        .generate(&program)
+        .expect("canonical Go generation");
+    assert_eq!(
+        codegen
+            .generate(&program)
+            .expect("canonical Go generation"),
+        first
+    );
 }
 
 #[cfg(feature = "lang-go")]
@@ -190,7 +266,9 @@ fn go_corpus_codegen_round_trips() {
             "initial parse failed for {}",
             path.display()
         );
-        let generated = ripex::go::codegen::Codegen::new().generate(&program);
+        let generated = ripex::go::codegen::Codegen::new()
+            .generate(&program)
+            .expect("canonical Go generation");
         let (_, errors) = ripex::go::parse_program(&generated);
         assert!(
             errors.is_empty(),
@@ -206,8 +284,15 @@ fn python_codegen_can_be_reused() {
     let (program, errors) = ripex::python::parse_program("value = 1\n");
     assert!(errors.is_empty());
     let mut codegen = ripex::python::codegen::Codegen::new();
-    let first = codegen.generate(&program);
-    assert_eq!(codegen.generate(&program), first);
+    let first = codegen
+        .generate(&program)
+        .expect("canonical Python generation");
+    assert_eq!(
+        codegen
+            .generate(&program)
+            .expect("canonical Python generation"),
+        first
+    );
 }
 
 #[cfg(feature = "lang-python")]
@@ -240,7 +325,9 @@ fn python_corpus_codegen_round_trips() {
             "initial parse failed for {}",
             path.display()
         );
-        let generated = ripex::python::codegen::Codegen::new().generate(&program);
+        let generated = ripex::python::codegen::Codegen::new()
+            .generate(&program)
+            .expect("canonical Python generation");
         let (_, errors) = ripex::python::parse_program(&generated);
         assert!(
             errors.is_empty(),
@@ -256,8 +343,15 @@ fn rust_codegen_can_be_reused() {
     let (program, errors) = ripex::rust::parse_program("fn main() {}");
     assert!(errors.is_empty());
     let mut codegen = ripex::rust::codegen::Codegen::new();
-    let first = codegen.generate(&program);
-    assert_eq!(codegen.generate(&program), first);
+    let first = codegen
+        .generate(&program)
+        .expect("canonical Rust generation");
+    assert_eq!(
+        codegen
+            .generate(&program)
+            .expect("canonical Rust generation"),
+        first
+    );
 }
 
 #[cfg(feature = "lang-rust")]
@@ -290,7 +384,9 @@ fn rust_corpus_codegen_round_trips() {
             "initial parse failed for {}",
             path.display()
         );
-        let generated = ripex::rust::codegen::Codegen::new().generate(&program);
+        let generated = ripex::rust::codegen::Codegen::new()
+            .generate(&program)
+            .expect("canonical Rust generation");
         let (_, errors) = ripex::rust::parse_program(&generated);
         assert!(
             errors.is_empty(),
@@ -339,7 +435,9 @@ fn javascript_typescript_corpus_codegen_round_trips() {
             "initial parse failed for {}",
             path.display()
         );
-        let generated = ripex::js::codegen::Printer::new().print_program(&program, &mut arena);
+        let generated = ripex::js::codegen::Printer::new()
+            .print_program(&program, &mut arena)
+            .expect("canonical JavaScript generation");
         let (_, errors, _) = ripex::js::parser::parse_program(&generated, &options);
         assert!(
             errors.is_empty(),

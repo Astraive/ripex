@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -13,6 +16,9 @@ jobs:
   test:
     name: Build & Test
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -20,56 +26,69 @@ jobs:
         rust: [stable]
 
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout v4 (reviewed immutable commit)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        # dtolnay/rust-toolchain stable (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy, rustfmt
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        # actions/cache v4 (reviewed immutable commit)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        # actions/cache v4 (reviewed immutable commit)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: target
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-build-
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
 
       - name: Test all targets and features
-        run: cargo test --all-targets --all-features --verbose
+        run: cargo test --locked --all-targets --all-features --verbose
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Build (no-default-features, library only)
-        run: cargo build --no-default-features --features "lang-all"
+        run: cargo build --locked --no-default-features --features "lang-all"
 
       - name: Documentation
         if: runner.os == 'Linux'
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --no-deps --all-features
+        run: cargo doc --locked --no-deps --all-features
 
   features:
     name: Feature ${{ matrix.feature }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     env:
       RUSTFLAGS: -D warnings
     strategy:
       fail-fast: false
       matrix:
         feature:
+          - cli
+          - lang-all
           - lang-c
           - lang-cpp
           - lang-csharp
@@ -79,37 +98,77 @@ jobs:
           - lang-rust
           - serde
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check --no-default-features --features "${{ matrix.feature }}"
-      - run: cargo test --no-default-features --features "${{ matrix.feature }}" --lib
+      # actions/checkout v4 (reviewed immutable commit)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install Rust
+        # dtolnay/rust-toolchain stable (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - name: Cache feature build
+        # actions/cache v4 (reviewed immutable commit)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.feature }}-cargo-build-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.feature }}-cargo-build-
+      - name: Check isolated feature
+        run: cargo check --locked --no-default-features --features "${{ matrix.feature }}"
+      - name: Run isolated integration tests
+        # --tests runs integration targets; feature-gated language tests skip unavailable modules.
+        run: cargo test --locked --no-default-features --features "${{ matrix.feature }}" --tests
 
   minimal:
     name: Minimal library
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     env:
       RUSTFLAGS: -D warnings
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check --no-default-features --lib
+      # actions/checkout v4 (reviewed immutable commit)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install Rust
+        # dtolnay/rust-toolchain stable (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - run: cargo check --locked --no-default-features --lib
 
   compiler-conformance:
     name: Compiler conformance corpus
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-go@v5
+      # actions/checkout v4 (reviewed immutable commit)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install Rust
+        # dtolnay/rust-toolchain stable (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - name: Install Go
+        # actions/setup-go v5 (reviewed immutable commit)
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: stable
-      - uses: actions/setup-node@v4
+      - name: Install Node.js
+        # actions/setup-node v4 (reviewed immutable commit)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
-      - uses: actions/setup-python@v5
+      - name: Install Python
+        # actions/setup-python v5 (reviewed immutable commit)
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - uses: actions/setup-dotnet@v4
+      - name: Install .NET
+        # actions/setup-dotnet v4 (reviewed immutable commit)
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: '8.0.x'
 
@@ -119,7 +178,7 @@ jobs:
           python -m pip install mypy
 
       - name: Build ripex
-        run: cargo build --all-features
+        run: cargo build --locked --all-features
 
       - name: Check C17 corpus
         run: target/debug/ripex check tests/lang-test/c --lang c
@@ -138,18 +197,66 @@ jobs:
       - name: Check Rust project
         run: target/debug/ripex check tests/lang-test/rust
 
-  fuzz:
-    name: Fuzz (crash / hang hunting)
+  fuzz-replay:
+    name: Fuzz corpus replay (deterministic)
     runs-on: ubuntu-latest
-    # Fuzzing needs nightly + cargo-fuzz; never block the main pipeline on it.
-    continue-on-error: true
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout v4 (reviewed immutable commit)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install nightly Rust
+        # dtolnay/rust-toolchain nightly (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4fd1da8b0805d2d2e936788875a7d65dbd677dc2
+        with:
+          toolchain: nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.12.0 --locked
+      - name: Replay committed fuzz seeds
+        working-directory: tests/fuzz
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -d corpus ]] || ! find corpus -type f -print -quit | grep -q .; then
+            echo "::notice::No committed fuzz seeds found; deterministic replay skipped."
+            exit 0
+          fi
+          for target in fuzz_all fuzz_js fuzz_python fuzz_go; do
+            corpus_dir="corpus/$target"
+            if [[ ! -d "$corpus_dir" ]]; then
+              echo "::error::Missing committed corpus directory: $corpus_dir"
+              exit 1
+            fi
+            while IFS= read -r -d '' seed; do
+              echo "Replaying $target seed $seed"
+              # cargo-fuzz has no --locked flag; CARGOFLAGS locks its inner Cargo invocation.
+              CARGOFLAGS=--locked cargo +nightly fuzz run "$target" "$seed" -- -runs=1
+            done < <(find "$corpus_dir" -type f -print0)
+          done
 
-      - name: Install nightly + cargo-fuzz
-        uses: dtolnay/rust-toolchain@nightly
-      - run: cargo install cargo-fuzz
-
+  fuzz:
+    name: Fuzz (advisory crash / hang hunting)
+    needs: fuzz-replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Randomized fuzzing is advisory and must not block ordinary PR validation.
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      # actions/checkout v4 (reviewed immutable commit)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install nightly Rust
+        # dtolnay/rust-toolchain nightly (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4fd1da8b0805d2d2e936788875a7d65dbd677dc2
+        with:
+          toolchain: nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.12.0 --locked
       - name: Fuzz all parsers briefly
         working-directory: tests/fuzz
-        run: cargo fuzz run fuzz_all -- -max_total_time=60
+        shell: bash
+        run: |
+          # cargo-fuzz has no --locked flag; CARGOFLAGS locks its inner Cargo invocation.
+          CARGOFLAGS=--locked cargo +nightly fuzz run fuzz_all -- -max_total_time=60

@@ -1,8 +1,14 @@
 use super::ast::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenerationError {
+    UnsupportedNode(&'static str),
+}
+
 pub struct Codegen {
     output: String,
     indent: usize,
+    error: Option<GenerationError>,
 }
 impl Default for Codegen {
     fn default() -> Self {
@@ -14,15 +20,26 @@ impl Codegen {
         Self {
             output: String::new(),
             indent: 0,
+            error: None,
         }
     }
-    pub fn generate(&mut self, program: &Program) -> String {
+    pub fn generate(&mut self, program: &Program) -> Result<String, GenerationError> {
         self.output.clear();
         self.indent = 0;
+        self.error = None;
         for stmt in &program.decls {
             self.stmt(stmt);
         }
-        self.output.clone()
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(self.output.clone()),
+        }
+    }
+
+    fn unsupported(&mut self, node: &'static str) {
+        if self.error.is_none() {
+            self.error = Some(GenerationError::UnsupportedNode(node));
+        }
     }
     fn ind(&mut self) {
         self.output.push_str(&"    ".repeat(self.indent));
@@ -156,8 +173,7 @@ impl Codegen {
     fn inline_stmt(&mut self, s: &Stmt) {
         match s {
             Stmt::Expr(e, _) => self.expr(e),
-            Stmt::VarDecl(v, _) => self.var(v),
-            _ => {}
+            _ => self.unsupported("unsupported inline statement"),
         }
     }
     fn function(&mut self, f: &FuncDecl) {
@@ -375,7 +391,7 @@ impl Codegen {
                 }
             }
             Expr::DeclSpec(v, _) => self.spec(v),
-            Expr::Error(_) => self.output.push('0'),
+            Expr::Error(_) => self.unsupported("error expression"),
         }
     }
     fn spec(&mut self, s: &DeclSpec) {

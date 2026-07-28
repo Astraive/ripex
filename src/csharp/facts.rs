@@ -286,12 +286,14 @@ fn walk_decls(decls: &[Decl], symbols: &mut Vec<ParsedSymbol>, parent_path: &[St
                 let class_name = parent_path.last().cloned().unwrap_or_default();
                 let member_name = if class_name.is_empty() {
                     class_name
-                } else {
+                } else if parent_path.len() > 1 {
                     format!(
                         "{}.{}",
                         parent_path[..parent_path.len() - 1].join("."),
                         class_name
                     )
+                } else {
+                    class_name
                 };
                 symbols.push(
                     ParsedSymbol::builder(SymbolKind::Constructor, &member_name)
@@ -419,6 +421,14 @@ fn walk_decls_for_calls(decls: &[Decl], calls: &mut Vec<ParsedCall>) {
                 if let Some(body) = &cd.body {
                     walk_block_for_calls(body, calls);
                 }
+                if let Some(init) = &cd.initializer {
+                    let args = match init {
+                        ConstructorInit::Base(args) | ConstructorInit::This(args) => args,
+                    };
+                    for arg in args {
+                        walk_expr_for_calls(arg, calls);
+                    }
+                }
             }
             Decl::Destructor(dd, _) => {
                 if let Some(body) = &dd.body {
@@ -431,6 +441,9 @@ fn walk_decls_for_calls(decls: &[Decl], calls: &mut Vec<ParsedCall>) {
                 }
                 if let Some(setter) = &pd.setter {
                     walk_stmt_for_calls(setter, calls);
+                }
+                if let Some(init) = &pd.init {
+                    walk_expr_for_calls(init, calls);
                 }
             }
             Decl::Field(fd, _) => {
@@ -565,6 +578,14 @@ fn walk_single_decl_for_calls(decl: &Decl, calls: &mut Vec<ParsedCall>) {
             }
         }
         Decl::Constructor(cd, _) => {
+            if let Some(init) = &cd.initializer {
+                let args = match init {
+                    ConstructorInit::Base(args) | ConstructorInit::This(args) => args,
+                };
+                for arg in args {
+                    walk_expr_for_calls(arg, calls);
+                }
+            }
             if let Some(body) = &cd.body {
                 walk_block_for_calls(body, calls);
             }
@@ -580,6 +601,9 @@ fn walk_single_decl_for_calls(decl: &Decl, calls: &mut Vec<ParsedCall>) {
             }
             if let Some(setter) = &pd.setter {
                 walk_stmt_for_calls(setter, calls);
+            }
+            if let Some(init) = &pd.init {
+                walk_expr_for_calls(init, calls);
             }
         }
         Decl::Field(fd, _) => {

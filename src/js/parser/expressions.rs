@@ -193,17 +193,25 @@ fn token_to_assign_op(kind: TokenKind) -> Option<AssignOp> {
 // ---- Core Pratt parser ----
 
 pub fn parse_expr(parser: &mut Parser, min_bp: u8) -> ExprRef {
+    if parser.bump_recursion().is_err() {
+        return parser.ast.alloc(Expr::Ident(Ident {
+            span: Span::ZERO,
+            name: String::new(),
+            optional: false,
+        }));
+    }
     let start = parser.current_pos();
 
     let mut left = match parser.peek() {
-        TokenKind::PlusPlus | TokenKind::MinusMinus => parse_prefix_update(parser),
-        TokenKind::Exclamation
+        TokenKind::PlusPlus
+        | TokenKind::MinusMinus
+        | TokenKind::Exclamation
         | TokenKind::Tilde
         | TokenKind::Plus
         | TokenKind::Minus
         | TokenKind::Typeof
         | TokenKind::Void
-        | TokenKind::Delete => parse_prefix_unary(parser),
+        | TokenKind::Delete => parse_prefix_chain(parser),
         TokenKind::Await => {
             if parser.in_async_ctx() {
                 parse_await_expr(parser)
@@ -499,6 +507,7 @@ pub fn parse_expr(parser: &mut Parser, min_bp: u8) -> ExprRef {
         break;
     }
 
+    parser.pop_recursion();
     left
 }
 
@@ -523,40 +532,86 @@ pub fn parse_cond_expr(parser: &mut Parser) -> ExprRef {
 
 // ---- Prefix parsing ----
 
-fn parse_prefix_unary(parser: &mut Parser) -> ExprRef {
-    let _start = parser.current_pos();
-    let tok = parser.advance();
-    let op = match tok.kind {
-        TokenKind::Plus => UnaryOp::Plus,
-        TokenKind::Minus => UnaryOp::Minus,
-        TokenKind::Exclamation => UnaryOp::Not,
-        TokenKind::Tilde => UnaryOp::BitNot,
-        TokenKind::Typeof => UnaryOp::Typeof,
-        TokenKind::Void => UnaryOp::Void,
-        TokenKind::Delete => UnaryOp::Delete,
-        _ => unreachable!(),
-    };
-    let arg = parse_expr(parser, 15);
-    let span = Span::new(tok.span.start, parser.ast[arg].span().end);
-    parser.ast.alloc(Expr::Unary(UnaryExpr { span, op, arg }))
+/// Parse a complete prefix-operator chain iteratively.
+///
+/// A recursive call per prefix operator can exhaust the native stack before
+/// the parser's logical depth budget is reached. Consume the chain first,
+/// parse its operand once, then rebuild the AST from the inside out.
+fn parse_prefix_chain(parser: &mut Parser) -> ExprRef {
+    let mut prefixes = Vec::new();
+    let mut prefix_count = 0usize;
+    let mut recursion_exceeded = false;
+    while matches!(
+        parser.peek(),
+        TokenKind::PlusPlus
+            | TokenKind::MinusMinus
+            | TokenKind::Exclamation
+            | TokenKind::Tilde
+            | TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Typeof
+            | TokenKind::Void
+            | TokenKind::Delete
+    ) {
+        let token = parser.advance();
+        prefix_count += 1;
+        if prefix_count <= crate::limits::MAX_RECURSION as usize {
+            prefixes.push((token.kind, token.span));
+        } else {
+            recursion_exceeded = true;
+        }
+    }
+    if recursion_exceeded {
+        let token = parser.current_token().clone();
+        let error = parser.error(DiagnosticCode::MaxRecursionExceeded, &token);
+        if !parser
+            .errors
+            .iter()
+            .any(|existing| existing.code == DiagnosticCode::MaxRecursionExceeded)
+        {
+            parser.errors.push(error);
+        }
+    }
+
+    let mut expression = parse_expr(parser, 15);
+    for (kind, span) in prefixes.into_iter().rev() {
+        let end = parser.ast[expression].span().end;
+        expression = match kind {
+            TokenKind::PlusPlus | TokenKind::MinusMinus => {
+                let op = if kind == TokenKind::PlusPlus {
+                    UpdateOp::PlusPlus
+                } else {
+                    UpdateOp::MinusMinus
+                };
+                parser.ast.alloc(Expr::Update(UpdateExpr {
+                    span: Span::new(span.start, end),
+                    op,
+                    arg: expression,
+                    prefix: true,
+                }))
+            }
+            _ => {
+                let op = match kind {
+                    TokenKind::Plus => UnaryOp::Plus,
+                    TokenKind::Minus => UnaryOp::Minus,
+                    TokenKind::Exclamation => UnaryOp::Not,
+                    TokenKind::Tilde => UnaryOp::BitNot,
+                    TokenKind::Typeof => UnaryOp::Typeof,
+                    TokenKind::Void => UnaryOp::Void,
+                    TokenKind::Delete => UnaryOp::Delete,
+                    _ => unreachable!(),
+                };
+                parser.ast.alloc(Expr::Unary(UnaryExpr {
+                    span: Span::new(span.start, end),
+                    op,
+                    arg: expression,
+                }))
+            }
+        };
+    }
+    expression
 }
 
-fn parse_prefix_update(parser: &mut Parser) -> ExprRef {
-    let _start = parser.current_pos();
-    let tok = parser.advance();
-    let op = match tok.kind {
-        TokenKind::PlusPlus => UpdateOp::PlusPlus,
-        _ => UpdateOp::MinusMinus,
-    };
-    let arg = parse_expr(parser, 16);
-    let span = Span::new(tok.span.start, parser.ast[arg].span().end);
-    parser.ast.alloc(Expr::Update(UpdateExpr {
-        span,
-        op,
-        arg,
-        prefix: true,
-    }))
-}
 
 fn parse_postfix_update(parser: &mut Parser, left: ExprRef) -> ExprRef {
     let tok = parser.advance();

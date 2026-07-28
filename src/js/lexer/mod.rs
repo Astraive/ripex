@@ -28,6 +28,7 @@ pub struct Lexer<'a> {
     hashbang_scanned: bool,
     eof_emitted: bool,
     tokens_count: usize,
+    token_limit_exceeded: bool,
 }
 
 fn is_ident_start(c: char) -> bool {
@@ -79,6 +80,7 @@ impl<'a> Lexer<'a> {
             hashbang_scanned: false,
             eof_emitted: false,
             tokens_count: 0,
+            token_limit_exceeded: false,
         }
     }
 
@@ -93,10 +95,16 @@ impl<'a> Lexer<'a> {
         })
     }
 
+    /// Returns whether lexing stopped because the token budget was exhausted.
+    pub fn token_limit_exceeded(&self) -> bool {
+        self.token_limit_exceeded
+    }
+
     /// Get all comments collected during lexing.
     pub fn comments(&self) -> &[Comment] {
         &self.comments
     }
+
 
     fn skip_trivia(&mut self) {
         loop {
@@ -658,7 +666,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
+impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -668,6 +676,9 @@ impl<'a> Iterator for Lexer<'a> {
             }
             self.eof_emitted = true;
             let pos = self.scanner.position();
+            if !self.scanner.is_eof() {
+                self.token_limit_exceeded = true;
+            }
             return Some(Token::new(TokenKind::Eof, Span::new(pos, pos)));
         }
         if self.scanner.is_eof() && self.comments.is_empty() {

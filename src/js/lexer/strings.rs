@@ -86,7 +86,7 @@ fn scan_escape(scanner: &mut Scanner) -> Option<char> {
             let hi = scanner.advance().and_then(hex_val);
             let lo = scanner.advance().and_then(hex_val);
             match (hi, lo) {
-                (Some(h), Some(l)) => (h << 4 | l) as char,
+                (Some(h), Some(l)) => ((h << 4) | l) as char,
                 _ => '\u{FFFD}',
             }
         }
@@ -112,7 +112,7 @@ fn scan_escape(scanner: &mut Scanner) -> Option<char> {
                 let hi = scanner.advance().and_then(hex_val);
                 let lo = scanner.advance().and_then(hex_val);
                 match (hi, lo) {
-                    (Some(h), Some(l)) => (h << 4 | l) as char,
+                    (Some(h), Some(l)) => ((h << 4) | l) as char,
                     _ => '\u{FFFD}',
                 }
             }

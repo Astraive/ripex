@@ -17,8 +17,12 @@ impl TempSource {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("ripex-check-{}-{nonce}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
+        let dir = (0_u32..100)
+            .map(|attempt| {
+                std::env::temp_dir().join(format!("ripex-check-{nonce:x}-{attempt:02x}"))
+            })
+            .find(|candidate| fs::create_dir(candidate).is_ok())
+            .expect("could not create an exclusive test directory");
         let path = dir.join(format!("{name}.rs"));
         fs::write(&path, source).unwrap();
         Self { dir, path }
@@ -57,7 +61,11 @@ fn rustc_rejects_a_real_type_error() {
 #[test]
 fn cargo_accepts_the_compiler_conformance_fixture() {
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/lang-test/rust");
-    let report = check_with_compiler(&project, None, &Default::default()).unwrap();
+    let options = CompilerCheckOptions {
+        trusted_project: true,
+        ..Default::default()
+    };
+    let report = check_with_compiler(&project, None, &options).unwrap();
     assert_eq!(report.status, CheckStatus::Passed, "{report:#?}");
     assert_eq!(report.stages.len(), 1);
     assert_eq!(report.stages[0].backend, "cargo");
@@ -93,4 +101,49 @@ fn every_language_has_a_compiler_plan() {
         assert!(!plans.is_empty(), "missing {language:?} compiler plan");
         assert!(plans.iter().all(|plan| !plan.candidates.is_empty()));
     }
+}
+
+#[test]
+fn untrusted_project_checks_fail_closed() {
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/lang-test/rust");
+    let error = plan_compiler_check(&project, Some(Language::Rust), &Default::default())
+        .expect_err("project execution must require explicit trust");
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn raw_extra_args_require_explicit_unsafe_gate() {
+    let source = TempSource::rust("args", "pub fn value() -> i32 { 1 }");
+    let options = CompilerCheckOptions {
+        extra_args: vec!["--emit=llvm-ir".into()],
+        ..Default::default()
+    };
+    let error = plan_compiler_check(&source.path, Some(Language::Rust), &options)
+        .expect_err("raw args must fail closed");
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+
+    let options = CompilerCheckOptions {
+        trusted_project: true,
+        allow_unsafe_args: true,
+        extra_args: vec!["--emit=llvm-ir".into()],
+        ..Default::default()
+    };
+    let plans = plan_compiler_check(&source.path, Some(Language::Rust), &options).unwrap();
+    assert!(plans[0].args.contains(&"--emit=llvm-ir".to_string()));
+}
+
+#[test]
+fn source_discovery_normalizes_extensions_and_is_deterministic() {
+    let source = TempSource::rust("discovery", "pub fn value() -> i32 { 1 }");
+    let c_source = source.dir.join("UPPER.C");
+    fs::write(&c_source, "int value(void) { return 1; }\n").unwrap();
+    let options = CompilerCheckOptions {
+        trusted_project: true,
+        ..Default::default()
+    };
+    let first = plan_compiler_check(&source.dir, Some(Language::C), &options).unwrap();
+    let second = plan_compiler_check(&source.dir, Some(Language::C), &options).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first.len(), 1);
+    assert!(first[0].args.iter().any(|arg| arg.ends_with("UPPER.C")));
 }

@@ -359,9 +359,9 @@ pub fn plan_compiler_check(
                     "build".into(),
                     project.to_string_lossy().into_owned(),
                     "--nologo".into(),
-                    format!("--property:BaseOutputPath={}", output_dir.display()),
+                    format!("--property:BaseOutputPath={}/", output_dir.display()),
                     format!(
-                        "--property:BaseIntermediateOutputPath={}",
+                        "--property:BaseIntermediateOutputPath={}/",
                         intermediate_dir.display()
                     ),
                 ];

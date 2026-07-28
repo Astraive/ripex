@@ -706,7 +706,9 @@ fn push_calls_for_expr(
             if let Some(object) = callee_obj {
                 fact = fact.object(object);
             }
-            calls.push(fact.build());
+            if let Ok(fact) = fact.try_build() {
+                calls.push(fact);
+            }
         }
         Expr::OptionalCall(oc) => {
             let (kind, callee_text) = resolve_callee(oc.callee, arena);
@@ -719,7 +721,9 @@ fn push_calls_for_expr(
             if let Some(object) = callee_obj {
                 fact = fact.object(object);
             }
-            calls.push(fact.build());
+            if let Ok(fact) = fact.try_build() {
+                calls.push(fact);
+            }
         }
         Expr::New(new) => {
             let callee_text = expr_name(new.callee, arena).unwrap_or_else(|| "unknown".into());

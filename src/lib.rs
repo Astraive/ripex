@@ -44,6 +44,9 @@ pub enum Language {
     C,
     Cpp,
     CSharp,
+    Java,
+    Kotlin,
+    Swift,
 }
 
 impl Language {
@@ -57,9 +60,11 @@ impl Language {
             Self::C => "c",
             Self::Cpp => "cpp",
             Self::CSharp => "csharp",
+            Self::Java => "java",
+            Self::Kotlin => "kotlin",
+            Self::Swift => "swift",
         }
     }
-
     pub fn from_id(id: &str) -> Option<Self> {
         match id.to_ascii_lowercase().as_str() {
             "javascript" | "js" | "jsx" => Some(Self::JavaScript),
@@ -70,6 +75,9 @@ impl Language {
             "c" => Some(Self::C),
             "cpp" | "c++" | "cxx" => Some(Self::Cpp),
             "csharp" | "c#" | "cs" => Some(Self::CSharp),
+            "java" => Some(Self::Java),
+            "kotlin" | "kt" | "kts" => Some(Self::Kotlin),
+            "swift" => Some(Self::Swift),
             _ => None,
         }
     }
@@ -86,6 +94,9 @@ impl Language {
             "c" => Some(Self::C),
             "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
             "cs" => Some(Self::CSharp),
+            "java" => Some(Self::Java),
+            "kt" | "kts" => Some(Self::Kotlin),
+            "swift" => Some(Self::Swift),
             _ => None,
         }
     }

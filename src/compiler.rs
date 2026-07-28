@@ -506,6 +506,45 @@ pub fn plan_compiler_check(
                 cwd,
             ));
         }
+        Language::Java => {
+            for source in source_files(&path, &["java"])? {
+                let mut args = vec!["-proc:none".into(), source.to_string_lossy().into_owned()];
+                args.extend(options.extra_args.clone());
+                plans.push(invocation(
+                    CheckStageKind::Compile,
+                    "javac",
+                    override_candidate.clone().unwrap_or_else(|| vec![vec!["javac".into()]]),
+                    args,
+                    cwd.clone(),
+                ));
+            }
+        }
+        Language::Kotlin => {
+            for source in source_files(&path, &["kt", "kts"])? {
+                let mut args = vec![source.to_string_lossy().into_owned()];
+                args.extend(options.extra_args.clone());
+                plans.push(invocation(
+                    CheckStageKind::Compile,
+                    "kotlinc",
+                    override_candidate.clone().unwrap_or_else(|| vec![vec!["kotlinc".into()]]),
+                    args,
+                    cwd.clone(),
+                ));
+            }
+        }
+        Language::Swift => {
+            for source in source_files(&path, &["swift"])? {
+                let mut args = vec!["-typecheck".into(), source.to_string_lossy().into_owned()];
+                args.extend(options.extra_args.clone());
+                plans.push(invocation(
+                    CheckStageKind::Compile,
+                    "swiftc",
+                    override_candidate.clone().unwrap_or_else(|| vec![vec!["swiftc".into()]]),
+                    args,
+                    cwd.clone(),
+                ));
+            }
+        }
     }
     Ok(plans)
 }

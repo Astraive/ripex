@@ -47,6 +47,13 @@ end-of-file. Type-only imports/re-exports, dynamic imports, optional calls,
 awaited calls, generic call arguments, and destructured bindings are emitted
 as first-class facts.
 
+The public fact payloads retain the detail needed for lossless downstream
+indexing: symbol parameters/defaults/docstrings/attributes and type metadata;
+import specifiers and re-export metadata; awaited, optional, receiver, and
+generic call metadata; plus variable scope, usage-site, and storage metadata.
+Consumers can serialize these native facts with the `serde` feature, then build
+their own cross-file relationships without discarding parser provenance.
+
 ## Library
 
 ```rust

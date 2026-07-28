@@ -13,16 +13,40 @@ ripex is a multi-language parser and fact extractor. Each language lives in its 
 
 `ExtractionResult` (`src/facts.rs`) holds four vectors:
 
-| Field        | Meaning                              |
-|--------------|--------------------------------------|
-| `symbols`    | definitions (fn, class, struct, ...) |
-| `imports`    | module / file references             |
-| `calls`      | call sites                           |
-| `variables`  | top-level / notable bindings         |
+| Field | Meaning |
+|-------|---------|
+| `symbols` | Definitions such as functions, methods, classes, structs, traits, and enums |
+| `imports` | Module/file references, bindings, specifiers, and re-export metadata |
+| `calls` | Call sites, including receiver/object, source position, and call modifiers |
+| `variables` | Bindings with declaration scope, type, storage, and usage-site metadata |
 
-Facts carry source locations appropriate to their kind (`line` or
-`line`/`column`), and `ParseResult::comments` retains source-preserving
-JavaScript/TypeScript hashbang, line, and block comments with full spans.
+Facts preserve source positions appropriate to their kind. `ParseResult::comments`
+also retains source-preserving JavaScript/TypeScript hashbang, line, and block
+comments with spans.
+
+### Rich structural payloads
+
+The four top-level collections are deliberately small; their payloads retain the
+language-native detail needed by a downstream indexer without requiring it to
+reparse the file:
+
+- `ParsedSymbol` carries the full signature, visibility, return type, async and
+  constructor/destructor/static flags, parameters (including annotations and
+  defaults), docstring, attributes, base classes, storage, template parameters,
+  and type classification when the language provides them.
+- `ParsedImport` preserves type-only and re-export flags, namespace/star imports,
+  module paths, and individual import specifiers.
+- `ParsedCall` records the semantic callee text, optional receiver, line/column,
+  awaited and optional-call flags, and generic type arguments. Extractors use
+  `try_build` so an empty callee is rejected instead of becoming a fabricated
+  fact.
+- `ParsedVariable` records declaration scope, usage sites, mutability, type and
+  storage metadata, and import/static/constexpr/thread-local/extern qualifiers
+  where applicable.
+
+All of these payloads are serializable behind the `serde` feature. Consumers
+should preserve them losslessly and derive normalized cross-file relationships
+as a separate stage.
 
 ## Registration
 

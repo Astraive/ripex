@@ -229,7 +229,7 @@ jobs:
               exit 1
             fi
             echo "Replaying $target committed fuzz seeds"
-            CARGOFLAGS=--locked cargo +nightly fuzz run "$target" -- -runs=1
+            CARGOFLAGS=--locked cargo +nightly fuzz run --fuzz-dir . "$target" -- -runs=1
           done
   fuzz:
     name: Fuzz (advisory crash / hang hunting)
@@ -255,4 +255,4 @@ jobs:
         shell: bash
         run: |
           # cargo-fuzz has no --locked flag; CARGOFLAGS locks its inner Cargo invocation.
-          CARGOFLAGS=--locked cargo +nightly fuzz run fuzz_all -- -max_total_time=60
+          CARGOFLAGS=--locked cargo +nightly fuzz run --fuzz-dir . fuzz_all -- -max_total_time=60

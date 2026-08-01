@@ -66,6 +66,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
+      - name: Generate per-language evidence report
+        if: runner.os == 'Linux'
+        run: cargo run --locked --example evidence_report --all-features -- target/ripex-evidence.md
+
       - name: Build (no-default-features, library only)
         run: cargo build --locked --no-default-features --features "lang-all"
 

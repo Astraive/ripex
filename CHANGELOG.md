@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.0
+
+- Set the default feature set to `lang-all` for language-only library builds;
+  the `cli` feature remains opt-in.
+- Documented the 0.3.0 dependency and explicit CLI installation/feature usage,
+  including the always-on `serde_json` dependency used by the public compiler
+  module for `compile_commands.json` support.
+- Added explicit Cargo security-contact metadata and updated supported versions
+  and vulnerability-reporting contact guidance.
+
 ## v0.2.0 (2026-07-28)
 
 - Clarified Ripex's parser-and-facts focus: external toolchain validation is

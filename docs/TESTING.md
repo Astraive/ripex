@@ -25,7 +25,23 @@ Corpus layout (`tests/lang-test/`): one dir per language
 (`javascript`, `python`, `go`, `rust`, `c`, `cpp`, `csharp`). TS/TSX fixtures
 live under `javascript/src/`.
 
-## 3. Compiler conformance
+## 3. Curated fact and throughput evidence
+
+`examples/evidence_report.rs` runs one curated case per enabled language, checks
+symbols/imports/calls/variables against explicit gold facts, exercises malformed
+inputs with a two-second watchdog, and records parse-plus-fact throughput and
+peak Ripex allocator bytes. It also runs the same source through Tree-sitter
+for a parse-acceptance/throughput comparison; Tree-sitter's native allocations
+are not included in the Rust allocator column.
+
+```bash
+cargo run --release --example evidence_report --all-features -- target/ripex-evidence.md
+```
+
+The generated report is evidence for the curated cases only, not a compiler
+semantic-equivalence claim. CI generates it on Linux as a smoke gate.
+
+## 4. Compiler conformance
 
 The `compiler-conformance` CI job installs the production toolchains and runs
 `ripex check` over every fixture project. Locally, run the checks documented in
@@ -36,7 +52,7 @@ Native projects with a `compile_commands.json` file should be included in this
 gate. The planner tests assert that recorded compilation flags are preserved
 while object and dependency output flags are removed for no-output checking.
 
-## 4. Fuzzing
+## 5. Fuzzing
 
 `tests/fuzz/` is a [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) workspace that feeds the
 parsers arbitrary bytes to hunt panics / hangs / OOM. Targets: `fuzz_all` (all languages),

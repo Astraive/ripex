@@ -51,6 +51,16 @@ fn test_parse_import_multi() {
 }
 
 #[test]
+fn test_parse_from_import_preserves_module_source() {
+    let (program, errors) = parse_program("from pathlib import Path\n");
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let imports = extract_imports(&program);
+    assert_eq!(imports.len(), 1);
+    assert_eq!(imports[0].kind, ImportKind::FromImport);
+    assert_eq!(imports[0].source, "pathlib");
+    assert_eq!(imports[0].imported_name.as_deref(), Some("Path"));
+}
+#[test]
 fn test_parse_function_no_args() {
     let (program, errors) = parse_program(fixtures::FUNC_NO_ARGS);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);

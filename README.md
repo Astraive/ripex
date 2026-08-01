@@ -93,50 +93,61 @@ The crate exposes:
 All fact types are serializable when the `serde` feature is enabled. The `cli`
 feature enables `serde` automatically.
 
+`serde_json` remains a required dependency for library builds because the public
+`ripex::compiler` module parses `compile_commands.json`; the `serde` feature
+only controls serialization derives for public fact and diagnostic types.
+
 ### Feature flags
 
-Each language is behind a feature flag, allowing minimal builds:
+Each language is behind a feature flag, allowing minimal builds. Add Ripex as a
+library dependency and choose only the language features you need:
 
 ```toml
 [dependencies]
-ripex = { version = "0.1", default-features = false, features = ["lang-rust", "lang-js"] }
+ripex = { version = "0.3.0", default-features = false, features = ["lang-rust", "lang-js"] }
 ```
 
 | Feature | Languages |
 |---------|-----------|
-| `lang-js` (default) | JavaScript + TypeScript + JSX |
-| `lang-python` (default) | Python |
-| `lang-go` (default) | Go |
-| `lang-rust` (default) | Rust |
-| `lang-c` (default) | C |
-| `lang-cpp` (default) | C++ |
-| `lang-csharp` (default) | C# |
-| `cli` (default) | CLI binary (`serde`, `clap`, `anyhow`) |
+| `lang-js` | JavaScript + TypeScript + JSX |
+| `lang-python` | Python |
+| `lang-go` | Go |
+| `lang-rust` | Rust |
+| `lang-c` | C |
+| `lang-cpp` | C++ |
+| `lang-csharp` | C# |
+| `cli` | CLI binary (`serde`, `clap`, `anyhow`) |
 | `serde` | Serialization for public facts, spans, and diagnostics |
 | `lang-all` (default) | All language features |
 
 ## CLI
 
+To install the CLI binary, opt in explicitly:
+
 ```sh
-cargo build
+cargo install ripex --version 0.3.0 --features cli
+```
+
+```sh
+cargo build --features cli
 
 # Parse a file; language auto-detected from extension.
-ripex parse path/to/file.rs
+cargo run --features cli -- parse path/to/file.rs
 
 # Force a language and emit facts as JSON.
-ripex parse src/models/product.js --lang javascript --json
+cargo run --features cli -- parse src/models/product.js --lang javascript --json
 
 # List supported parsers.
-ripex ls
+cargo run --features cli -- ls
 
 # Optionally validate a file with its production compiler.
-ripex check src/lib.rs
+cargo run --features cli -- check src/lib.rs
 
 # Discover the nearest project manifest and check the whole project.
-ripex check src/lib.rs --project --json
+cargo run --features cli -- check src/lib.rs --project --json
 
 # Select a standard and pass include/configuration flags through to the compiler.
-ripex check native/main.cpp --standard c++23 --arg=-Iinclude
+cargo run --features cli -- check native/main.cpp --standard c++23 --arg=-Iinclude
 ```
 
 Flags: `--json` (versioned machine output), `--ast` (AST shape summary), `--facts`

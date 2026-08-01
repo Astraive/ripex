@@ -213,16 +213,7 @@ impl<'a> Lexer<'a> {
             '0'..='9' => return self.read_number(start),
             // String prefixes
             'f' | 'F' | 'b' | 'B' | 'r' | 'R' => {
-                let ch2 = self.scanner.peek_ahead(1).unwrap_or('\0');
-                if ch2 == '"'
-                    || ch2 == '\''
-                    || ch2 == 'f'
-                    || ch2 == 'F'
-                    || ch2 == 'r'
-                    || ch2 == 'R'
-                    || ch2 == 'b'
-                    || ch2 == 'B'
-                {
+                if self.starts_string_literal() {
                     return self.read_string(start);
                 }
                 let word = self.scan_ident();
@@ -467,6 +458,18 @@ impl<'a> Lexer<'a> {
             }
         }
         self.scanner.slice(start).to_string()
+    }
+
+    fn starts_string_literal(&self) -> bool {
+        let quote = |ch| matches!(ch, Some('"') | Some('\''));
+        let first = self.scanner.peek();
+        let second = self.scanner.peek_ahead(1);
+        if quote(second) {
+            return true;
+        }
+        matches!(second, Some('f' | 'F' | 'b' | 'B' | 'r' | 'R'))
+            && quote(self.scanner.peek_ahead(2))
+            && matches!(first, Some('f' | 'F' | 'b' | 'B' | 'r' | 'R'))
     }
 
     fn read_number(&mut self, start: Pos) -> Token {

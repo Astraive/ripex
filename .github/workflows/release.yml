@@ -1,0 +1,262 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Validation and build jobs only need to read the repository. The release job
+# narrows its write permission to the GitHub Release API call.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out tagged revision
+        # actions/checkout v4 (reviewed immutable commit)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust 1.85.0
+        # dtolnay/rust-toolchain (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.85.0
+          components: clippy, rustfmt
+
+      - name: Require a clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain=v1)"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Verify tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(
+            cargo metadata --locked --no-deps --format-version 1 |
+              python3 -c 'import json, sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ripex"))'
+          )"
+          test "$RELEASE_TAG" = "v$package_version" || {
+            echo "Tag $RELEASE_TAG does not match ripex package version $package_version" >&2
+            exit 1
+          }
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check library with default features
+        run: cargo check --locked --lib
+
+      - name: Check library feature set without the CLI
+        run: cargo check --locked --lib --no-default-features --features "lang-all"
+
+      - name: Test all targets and features
+        run: cargo test --locked --all-targets --all-features
+
+      - name: Run Clippy with warnings denied
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: ripex
+            archive_suffix: tar.gz
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            binary: ripex
+            archive_suffix: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: ripex.exe
+            archive_suffix: zip
+    steps:
+      - name: Check out tagged revision
+        # actions/checkout v4 (reviewed immutable commit)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust 1.85.0
+        # dtolnay/rust-toolchain (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.85.0
+          target: ${{ matrix.target }}
+      - name: Install Python 3.12 for deterministic packaging
+        # actions/setup-python v5 (reviewed immutable commit)
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Build CLI with explicit features
+        run: cargo build --locked --release --target "${{ matrix.target }}" --no-default-features --features "cli,lang-all" --bin ripex
+
+      - name: Package deterministic artifact and checksum
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          BINARY_NAME: ${{ matrix.binary }}
+          ARCHIVE_SUFFIX: ${{ matrix.archive_suffix }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          binary="target/$TARGET/release/$BINARY_NAME"
+          archive="dist/ripex-$RELEASE_TAG-$TARGET.$ARCHIVE_SUFFIX"
+          test -f "$binary"
+          "$binary" --version
+          export BINARY="$binary"
+          export ARCHIVE="$archive"
+          python - <<'PY'
+          import gzip
+          import io
+          import os
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          binary = Path(os.environ["BINARY"])
+          archive = Path(os.environ["ARCHIVE"])
+          data = binary.read_bytes()
+
+          if archive.name.endswith(".tar.gz"):
+              # Normalize archive metadata so equivalent builds have the same bytes.
+              with archive.open("wb") as raw:
+                  with gzip.GzipFile(fileobj=raw, mode="wb", filename="", mtime=0) as gz:
+                      with tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT) as tar:
+                          info = tarfile.TarInfo(binary.name)
+                          info.size = len(data)
+                          info.mode = 0o755
+                          info.uid = 0
+                          info.gid = 0
+                          info.uname = ""
+                          info.gname = ""
+                          info.mtime = 0
+                          tar.addfile(info, io.BytesIO(data))
+          elif archive.name.endswith(".zip"):
+              info = zipfile.ZipInfo(binary.name, date_time=(1980, 1, 1, 0, 0, 0))
+              info.create_system = 3
+              info.external_attr = 0o755 << 16
+              info.compress_type = zipfile.ZIP_DEFLATED
+              with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipped:
+                  zipped.writestr(info, data)
+          else:
+              raise SystemExit(f"unsupported archive type: {archive}")
+          PY
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          archive = Path(os.environ["ARCHIVE"])
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          archive.with_name(archive.name + ".sha256").write_text(
+              f"{digest}  {archive.name}\n", encoding="ascii"
+          )
+          PY
+          echo "ARCHIVE_NAME=$(basename "$archive")" >> "$GITHUB_ENV"
+
+      - name: Upload packaged artifact
+        # actions/upload-artifact v4.6.2 (immutable commit)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ripex-${{ github.ref_name }}-${{ matrix.target }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged artifacts
+        # actions/download-artifact v4.3.0 (immutable commit)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: ripex-${{ github.ref_name }}-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify artifacts and assemble checksums
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RELEASE_TAG" <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          tag = sys.argv[1]
+          root = Path("release-assets")
+          archives = sorted(root.glob(f"ripex-{tag}-*.tar.gz")) + sorted(root.glob(f"ripex-{tag}-*.zip"))
+          checksums = sorted(root.glob("*.sha256"))
+          if len(archives) != 3 or len(checksums) != 3:
+              raise SystemExit(f"expected 3 archives and 3 checksums, got {len(archives)} and {len(checksums)}")
+
+          lines = []
+          for checksum in checksums:
+              fields = checksum.read_text(encoding="ascii").split()
+              if len(fields) != 2:
+                  raise SystemExit(f"invalid checksum file: {checksum}")
+              expected, filename = fields
+              archive = root / filename
+              if archive not in archives:
+                  raise SystemExit(f"checksum references unexpected archive: {filename}")
+              actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit(f"checksum mismatch for {filename}")
+              lines.append(f"{expected}  {filename}\n")
+
+          (root / "SHA256SUMS").write_text("".join(sorted(lines)), encoding="ascii")
+          PY
+
+      - name: Create GitHub Release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Ripex $RELEASE_TAG" \
+            --generate-notes \
+            release-assets/*

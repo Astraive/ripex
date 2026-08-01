@@ -1,6 +1,6 @@
 [package]
 name = "ripex"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.85.0"
 license = "MIT"
@@ -17,6 +17,9 @@ exclude = [
     "graxus.yaml",
 ]
 
+[package.metadata.security]
+contact = "neerajcodz@gmail.com"
+
 [lib]
 name = "ripex"
 path = "src/lib.rs"
@@ -27,7 +30,7 @@ path = "src/main.rs"
 required-features = ["cli"]
 
 [features]
-default = ["cli", "lang-all"]
+default = ["lang-all"]
 serde = ["dep:serde"]
 cli = ["dep:anyhow", "dep:clap", "serde"]
 lang-all = ["lang-python", "lang-go", "lang-rust", "lang-c", "lang-cpp", "lang-csharp", "lang-js"]
@@ -54,6 +57,20 @@ panic = "abort"     # Abort on panic (smaller binary)
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+tree-sitter = "0.25"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+
+[[example]]
+name = "evidence_report"
+path = "examples/evidence_report.rs"
+required-features = ["lang-all"]
 
 [[bench]]
 name = "parse_all_langs"

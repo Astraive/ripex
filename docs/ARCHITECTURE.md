@@ -4,6 +4,13 @@ ripex is a multi-language parser and fact extractor. Each language lives in its 
 `src/<lang>/` (e.g. `src/js`, `src/python`, `src/cpp`). Every parser implements the
 `LanguageParser` trait (`src/lib.rs`) with the same two-phase API:
 
+Ripex v0.3.0 exposes eight language modes through seven parser families:
+JavaScript and TypeScript are distinct modes backed by the JavaScript parser
+family. Cargo features (`lang-js`, `lang-python`, `lang-go`, `lang-rust`,
+`lang-c`, `lang-cpp`, and `lang-csharp`) select parser families; `lang-all`
+enables them all, while the `cli` feature remains an explicit opt-in for the
+`ripex` command.
+
 1. **`parse(&str) -> ParseResult`** — tokenize + build the (possibly partial) AST, recording
    `ParseError`s as it goes. ripex is *resilient*: it recovers from bad tokens instead of aborting,
    so a single syntax error never discards the rest of a file.
@@ -80,3 +87,8 @@ The separation is required for correctness: standards-conforming type checking
 depends on project graphs, SDKs, target configuration, macros, and compiler
 versions that are outside a structural parser's AST. `unavailable`, timeout,
 and invocation failures are first-class non-success statuses.
+
+The corpus gate and curated evidence report therefore establish structural
+parser acceptance and fact extraction only. They do not substitute for
+compiler-level semantic validation; that evidence comes from the separate
+production-toolchain checks described above.

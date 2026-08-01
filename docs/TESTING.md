@@ -1,7 +1,7 @@
 # Testing
 
-Four layers: unit/integration tests, the structural corpus gate, production
-compiler conformance, and fuzzing.
+Five layers: unit/integration tests, the structural corpus gate, curated
+fact/throughput evidence, production compiler conformance, and fuzzing.
 
 ## 1. Unit + integration tests
 
@@ -24,6 +24,9 @@ cargo test --release --test ripex_lang_test_repos -- --nocapture --test-threads=
 Corpus layout (`tests/lang-test/`): one dir per language
 (`javascript`, `python`, `go`, `rust`, `c`, `cpp`, `csharp`). TS/TSX fixtures
 live under `javascript/src/`.
+
+The seven corpus directories cover eight language modes: JavaScript and
+TypeScript are separate modes backed by the `javascript` parser directory.
 
 ## 3. Curated fact and throughput evidence
 

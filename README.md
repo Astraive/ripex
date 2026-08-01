@@ -10,6 +10,13 @@ ripex is not a compiler, linker, runtime, or type checker. The optional
 `check` command delegates validation to the language's existing production
 toolchain; it does not reimplement compiler semantics.
 
+## Ripex v0.3.0
+
+Ripex v0.3.0 was published on 2026-08-01:
+[crates.io package](https://crates.io/crates/ripex/0.3.0) ·
+[docs.rs API documentation](https://docs.rs/ripex/0.3.0) ·
+[GitHub release](https://github.com/Astraive/ripex/releases/tag/v0.3.0).
+
 ## Supported languages
 
 | Language | Extensions | Structural parser | Optional external validation |
@@ -33,6 +40,13 @@ All eight language modes parse the complete checked-in corpus without
 diagnostics. CI also compiles/type-checks the corresponding real fixture
 projects and requires every language to extract symbols, imports, calls, and
 variables, with no parser panics or hangs.
+
+The checked-in corpus and curated evidence report establish structural parsing
+and fact-extraction behavior only. They do not establish compiler-level
+semantic equivalence; use `ripex check` and the production-toolchain
+conformance gate for that separate question. See
+[`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) for measured limits and
+[`docs/TESTING.md`](docs/TESTING.md) for the evidence and compiler gates.
 
 Each language pipeline produces four fact types:
 

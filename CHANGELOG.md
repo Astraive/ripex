@@ -1,6 +1,24 @@
 # Changelog
 
-## v0.3.0
+## v0.3.0 (2026-08-01)
+
+Ripex v0.3.0 is published: [crates.io](https://crates.io/crates/ripex/0.3.0) ·
+[docs.rs](https://docs.rs/ripex/0.3.0) ·
+[GitHub release](https://github.com/Astraive/ripex/releases/tag/v0.3.0).
+
+### Parser hardening and evidence
+
+- Hardened recursive-descent progress and error-recovery paths across the
+  eight language modes, including malformed-input watchdog coverage.
+- Added the per-language corpus gate: every checked-in mode must parse without
+  diagnostics, panics, or hangs and must emit symbols, imports, calls, and
+  variables.
+- Added the curated evidence harness and report for exact gold-fact matching,
+  malformed-input behavior, throughput, and allocator observations. The report
+  is structural evidence for the checked-in corpus and curated cases, not a
+  compiler-level semantic-equivalence claim.
+
+### Distribution, security, and CI
 
 - Set the default feature set to `lang-all` for language-only library builds;
   the `cli` feature remains opt-in.
@@ -9,6 +27,16 @@
   module for `compile_commands.json` support.
 - Added explicit Cargo security-contact metadata and updated supported versions
   and vulnerability-reporting contact guidance.
+- Expanded locked CI coverage for all targets and features, isolated feature
+  builds, documentation, evidence generation, and production-toolchain
+  conformance.
+- Both `.github/workflows/ci.yml` and `.github/workflows/release.yml` passed
+  after the Graxus dependency migration, covering locked builds, tests,
+  evidence, conformance, and release artifact validation.
+- Recorded the downstream Graxus migration to consume the published
+  `ripex` 0.3.0 package; this entry does not assert a separate Graxus release.
+- Published deterministic Linux, macOS, and Windows CLI archives with
+  per-archive SHA-256 files and an aggregate `SHA256SUMS` artifact.
 
 ## v0.2.0 (2026-07-28)
 
@@ -37,7 +65,8 @@
 
 ### Initial Release
 
-- Hand-written recursive-descent parsers for 7 languages: JavaScript/TypeScript, Python, Go, Rust, C, C++, C#
+- Hand-written recursive-descent parsers for 7 parser families covering 8
+  language modes: JavaScript and TypeScript, Python, Go, Rust, C, C++, C#
 - Common pipeline: Lexer → Parser → AST → Facts extraction
 - Per-language feature flags for minimal builds
 - Fact extraction: symbols, imports, calls, variables with full type/visibility/modifier metadata

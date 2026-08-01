@@ -1,7 +1,11 @@
-# Ripex 0.3 parser evidence
+# Ripex v0.3.0 parser evidence
 
 This report is generated from checked-in source and curated gold cases.
 It is evidence for the published structural contract, not a claim of compiler-level semantic equivalence.
+
+Release references: [crates.io](https://crates.io/crates/ripex/0.3.0) ·
+[docs.rs](https://docs.rs/ripex/0.3.0) ·
+[GitHub release](https://github.com/Astraive/ripex/releases/tag/v0.3.0).
 
 Environment: `windows/x86_64`; corpus source: `tests/lang-test`; benchmark iterations: `10`.
 

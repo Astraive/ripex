@@ -457,7 +457,26 @@ fn process_symbol_decl(
                     .build(),
             );
         }
-        Decl::Var(_) => {}
+        Decl::Var(var) => {
+            for declarator in &var.decls {
+                let Pat::Ident(binding) = &declarator.name else {
+                    continue;
+                };
+                let kind = if var.kind == AstVarKind::Const {
+                    SymbolKind::Constant
+                } else {
+                    SymbolKind::Variable
+                };
+                let mut symbol = ParsedSymbol::builder(kind, &binding.id.name)
+                    .exported(exported)
+                    .lines(declarator.span.start.line, declarator.span.end.line)
+                    .build();
+                if let Some(type_ann) = &binding.type_ann {
+                    symbol.type_kind = convert_type_ann(type_ann);
+                }
+                symbols.push(symbol);
+            }
+        }
     }
 }
 

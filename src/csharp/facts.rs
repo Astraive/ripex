@@ -120,14 +120,14 @@ fn walk_decls(decls: &[Decl], symbols: &mut Vec<ParsedSymbol>, parent_path: &[St
                 for iface in &cls.interfaces {
                     base_classes.push(expr_to_string(iface));
                 }
-                symbols.push(
-                    ParsedSymbol::builder(SymbolKind::Class, &full_name)
-                        .visibility(map_vis(&cls.visibility))
-                        .abstract_(cls.is_abstract)
-                        .static_(cls.is_static)
-                        .lines(span.start.line, span.end.line)
-                        .build(),
-                );
+                let mut symbol = ParsedSymbol::builder(SymbolKind::Class, &full_name)
+                    .visibility(map_vis(&cls.visibility))
+                    .abstract_(cls.is_abstract)
+                    .static_(cls.is_static)
+                    .lines(span.start.line, span.end.line)
+                    .build();
+                symbol.base_classes = base_classes;
+                symbols.push(symbol);
                 let mut path = parent_path.to_vec();
                 path.push(cls.name.clone());
                 walk_decls(&cls.members, symbols, &path);
@@ -177,14 +177,14 @@ fn walk_decls(decls: &[Decl], symbols: &mut Vec<ParsedSymbol>, parent_path: &[St
                 for iface in &cls.interfaces {
                     base_classes.push(expr_to_string(iface));
                 }
-                symbols.push(
-                    ParsedSymbol::builder(SymbolKind::Class, &full_name)
-                        .visibility(map_vis(&cls.visibility))
-                        .abstract_(cls.is_abstract)
-                        .static_(cls.is_static)
-                        .lines(span.start.line, span.end.line)
-                        .build(),
-                );
+                let mut symbol = ParsedSymbol::builder(SymbolKind::Class, &full_name)
+                    .visibility(map_vis(&cls.visibility))
+                    .abstract_(cls.is_abstract)
+                    .static_(cls.is_static)
+                    .lines(span.start.line, span.end.line)
+                    .build();
+                symbol.base_classes = base_classes;
+                symbols.push(symbol);
                 let mut path = parent_path.to_vec();
                 path.push(cls.name.clone());
                 walk_decls(&cls.members, symbols, &path);

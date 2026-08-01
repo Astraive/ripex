@@ -107,3 +107,41 @@ fn every_extracted_fact_kind_is_serializable() {
     assert!(json["calls"].is_array());
     assert!(json["variables"].is_array());
 }
+
+#[cfg(all(feature = "lang-js", feature = "cli"))]
+#[test]
+fn extracts_javascript_variable_symbols() {
+    let parser = parser_for_ext("typescript", "ts").expect("TypeScript parser");
+    let result = parser.parse("const answer: number = 42;\nexport const ready = answer;");
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let facts = parser.extract(&result).expect("complete extraction");
+
+    let answer = facts.symbols.iter().find(|symbol| symbol.name == "answer");
+    assert!(
+        answer.is_some(),
+        "const declarations should produce symbols"
+    );
+    assert_eq!(answer.unwrap().kind, ripex::SymbolKind::Constant);
+    assert!(facts
+        .symbols
+        .iter()
+        .any(|symbol| symbol.name == "ready" && symbol.exported));
+}
+
+#[cfg(all(feature = "lang-csharp", feature = "cli"))]
+#[test]
+fn retains_csharp_base_types_in_symbols() {
+    let parser = parser_for_ext("csharp", "cs").expect("C# parser");
+    let result = parser.parse("class Child : Base, IChild {}");
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let facts = parser.extract(&result).expect("complete extraction");
+    let child = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Child")
+        .expect("Child symbol");
+    assert_eq!(
+        child.base_classes,
+        vec!["Base".to_owned(), "IChild".to_owned()]
+    );
+}

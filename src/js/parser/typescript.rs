@@ -26,6 +26,9 @@ fn try_parse_ts_type_params_inner(parser: &mut Parser) -> Option<Vec<TypeAnn>> {
             parser.advance();
             return Some(params);
         }
+        if parser.is_eof() {
+            return None;
+        }
         let tok = parser.advance();
         if parser.peek() == TokenKind::Extends {
             parser.advance();
@@ -173,8 +176,12 @@ fn parse_ts_atom_type(parser: &mut Parser) -> TypeAnn {
             parser.expect(TokenKind::LParen).ok();
             let mut params = Vec::new();
             while parser.peek() != TokenKind::RParen && !parser.is_eof() {
+                let before = parser.current_pos();
                 params.push(parse_ts_type(parser));
                 if parser.peek() == TokenKind::Comma {
+                    parser.advance();
+                }
+                if parser.current_pos() == before && !parser.is_eof() {
                     parser.advance();
                 }
             }
@@ -339,8 +346,12 @@ fn parse_ts_object_type(parser: &mut Parser) -> TypeAnn {
                         parser.expect(TokenKind::LParen).ok();
                         let mut params = Vec::new();
                         while parser.peek() != TokenKind::RParen && !parser.is_eof() {
+                            let before = parser.current_pos();
                             params.push(parse_ts_type(parser));
                             if parser.peek() == TokenKind::Comma {
+                                parser.advance();
+                            }
+                            if parser.current_pos() == before && !parser.is_eof() {
                                 parser.advance();
                             }
                         }

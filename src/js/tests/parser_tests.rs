@@ -1121,3 +1121,16 @@ fn byte_limit_is_enforced_by_all_js_entrypoints() {
         .iter()
         .any(|error| error.code == crate::diagnostics::DiagnosticCode::InputTooLarge));
 }
+
+#[test]
+fn malformed_typescript_type_assertion_makes_progress() {
+    let data = [0u8, 202, 99, 111, 110, 1, 0, 0, 60, 123, 110, 40, 8];
+    let source = String::from_utf8_lossy(&data);
+    let mut options = ParserOptions::module();
+    crate::js::config::ParserPlugins::typescript().apply(&mut options);
+    let (_, errors, _, _) = parser::parse_program_with_comments(&source, &options);
+    assert!(
+        !errors.is_empty(),
+        "malformed input should retain a diagnostic"
+    );
+}

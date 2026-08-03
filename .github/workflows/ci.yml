@@ -26,19 +26,19 @@ jobs:
         rust: [stable]
 
     steps:
-      # actions/checkout v4 (reviewed immutable commit)
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/checkout v7 (reviewed immutable commit)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Install Rust
         # dtolnay/rust-toolchain stable (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy, rustfmt
 
       - name: Cache cargo registry
-        # actions/cache v4 (reviewed immutable commit)
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        # actions/cache v6 (reviewed immutable commit)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
@@ -46,8 +46,8 @@ jobs:
             ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-
 
       - name: Cache cargo build
-        # actions/cache v4 (reviewed immutable commit)
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        # actions/cache v6 (reviewed immutable commit)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: target
           key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
@@ -102,16 +102,16 @@ jobs:
           - lang-rust
           - serde
     steps:
-      # actions/checkout v4 (reviewed immutable commit)
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/checkout v7 (reviewed immutable commit)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install Rust
         # dtolnay/rust-toolchain stable (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
       - name: Cache feature build
-        # actions/cache v4 (reviewed immutable commit)
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        # actions/cache v6 (reviewed immutable commit)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: target
           key: ${{ runner.os }}-${{ matrix.feature }}-cargo-build-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
@@ -132,11 +132,11 @@ jobs:
     env:
       RUSTFLAGS: -D warnings
     steps:
-      # actions/checkout v4 (reviewed immutable commit)
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/checkout v7 (reviewed immutable commit)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install Rust
         # dtolnay/rust-toolchain stable (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
       - run: cargo check --locked --no-default-features --lib
@@ -148,33 +148,35 @@ jobs:
     permissions:
       contents: read
     steps:
-      # actions/checkout v4 (reviewed immutable commit)
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/checkout v7 (reviewed immutable commit)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install Rust
         # dtolnay/rust-toolchain stable (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
       - name: Install Go
-        # actions/setup-go v5 (reviewed immutable commit)
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        # actions/setup-go v7 (reviewed immutable commit)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: stable
-      - name: Install Node.js
-        # actions/setup-node v4 (reviewed immutable commit)
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - name: Install latest Node.js
+        # actions/setup-node v7 (reviewed immutable commit)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24
-      - name: Install Python
-        # actions/setup-python v5 (reviewed immutable commit)
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+          node-version: latest
+          check-latest: true
+      - name: Install latest Python
+        # actions/setup-python v7 (reviewed immutable commit)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: '3.12'
-      - name: Install .NET
-        # actions/setup-dotnet v4 (reviewed immutable commit)
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+          python-version: '3.14'
+          check-latest: true
+      - name: Install latest .NET
+        # actions/setup-dotnet v6 (reviewed immutable commit)
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.x'
 
       - name: Install language analyzers
         run: |
@@ -208,15 +210,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      # actions/checkout v4 (reviewed immutable commit)
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/checkout v7 (reviewed immutable commit)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install nightly Rust
         # dtolnay/rust-toolchain nightly (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@4fd1da8b0805d2d2e936788875a7d65dbd677dc2
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly
-      - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --version 0.12.0 --locked
+      - name: Install latest cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
       - name: Replay committed fuzz seeds
         working-directory: tests/fuzz
         shell: bash
@@ -245,15 +247,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      # actions/checkout v4 (reviewed immutable commit)
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/checkout v7 (reviewed immutable commit)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install nightly Rust
         # dtolnay/rust-toolchain nightly (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@4fd1da8b0805d2d2e936788875a7d65dbd677dc2
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly
-      - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --version 0.12.0 --locked
+      - name: Install latest cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
       - name: Fuzz all parsers briefly
         working-directory: tests/fuzz
         shell: bash
@@ -297,30 +299,30 @@ jobs:
             runtime: true
 
     steps:
-      # actions/checkout v4 (reviewed immutable commit)
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-
-      - name: Install Node.js 24
-        # actions/setup-node v4 (reviewed immutable commit)
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      # actions/checkout v7 (reviewed immutable commit)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install latest Node.js
+        # actions/setup-node v7 (reviewed immutable commit)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24
+          node-version: latest
+          check-latest: true
 
-      - name: Install pnpm 10.28.2
-        run: npm install --global pnpm@10.28.2
+      - name: Install latest pnpm
+        run: npm install --global pnpm@11.20.0
 
-      - name: Install Bun 1.3.14
+      - name: Install latest Bun
         run: npm install --global bun@1.3.14
       - name: Install Rust 1.88.0 and target
         # dtolnay/rust-toolchain (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: 1.88.0
           target: ${{ matrix.target }}
 
       - name: Install Node binding dependencies
         working-directory: bindings/node
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts --config.minimum-release-age=0
 
       - name: Build Node binding
         working-directory: bindings/node
@@ -378,8 +380,8 @@ jobs:
         run: npm run pack:dry
 
       - name: Upload Node binding artifact
-        # actions/upload-artifact v4.6.2 (immutable commit)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        # actions/upload-artifact v7 (immutable commit)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: node-bindings-${{ matrix.target }}
           path: |

@@ -21,9 +21,9 @@
     }
   },
   "engines": {
-    "node": ">=20.17.0"
+    "node": ">=26.0.0"
   },
-  "packageManager": "pnpm@10.28.2",
+  "packageManager": "pnpm@11.20.0",
   "napi": {
     "binaryName": "ripex",
     "targets": [
@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "3.8.2",
-    "@types/node": "24.0.0",
+    "@types/node": "26.1.2",
     "typescript": "7.0.2"
   }
 }

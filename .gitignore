@@ -1,6 +1,11 @@
 # Build artifacts
 /target
 **/target
+/bindings/node/target/
+/bindings/node/node_modules/
+/bindings/node/*.node
+/bindings/node/npm/
+/bindings/node/artifacts/
 node_modules/
 **/*.rs.bk
 

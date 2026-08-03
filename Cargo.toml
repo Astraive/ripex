@@ -15,6 +15,7 @@ exclude = [
     "/target",
     "/.graxus",
     "graxus.yaml",
+    "/bindings/node",
 ]
 
 [package.metadata.security]

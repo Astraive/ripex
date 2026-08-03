@@ -1,0 +1,49 @@
+{
+  "name": "@astraive/ripex",
+  "version": "0.3.0",
+  "description": "Native multi-language structural parsing and fact extraction for Node.js.",
+  "keywords": ["parsing", "structural-parsing", "ast", "fact-extraction", "code-analysis", "tree-sitter"],
+  "license": "MIT",
+  "repository": "https://github.com/Astraive/ripex",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": ["index.cjs", "index.js", "index.d.ts", "npm"],
+  "main": "./index.cjs",
+  "module": "./index.js",
+  "types": "./index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "require": "./index.cjs"
+    }
+  },
+  "engines": {
+    "node": ">=20.17.0"
+  },
+  "packageManager": "pnpm@10.28.2",
+  "napi": {
+    "binaryName": "ripex",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:release": "node scripts/build.mjs --release",
+    "test": "node --test test/index.cjs test/index.mjs",
+    "test:types": "tsc --noEmit --strict --module NodeNext --moduleResolution NodeNext test/types.ts",
+    "pack:dry": "npm pack --dry-run --ignore-scripts"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.8.2",
+    "@types/node": "24.0.0",
+    "typescript": "7.0.2"
+  }
+}

@@ -260,3 +260,132 @@ jobs:
         run: |
           # cargo-fuzz has no --locked flag; CARGOFLAGS locks its inner Cargo invocation.
           CARGOFLAGS=--locked cargo +nightly fuzz run --fuzz-dir . fuzz_all -- -max_total_time=60 -timeout=5 -rss_limit_mb=512 -max_len=4096
+  node-bindings:
+    name: Node bindings (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: ripex.linux-x64-gnu.node
+            cross: "0"
+            runtime: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            binary: ripex.linux-arm64-gnu.node
+            cross: "1"
+            runtime: false
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            binary: ripex.darwin-x64.node
+            cross: "0"
+            runtime: true
+          - os: macos-14
+            target: aarch64-apple-darwin
+            binary: ripex.darwin-arm64.node
+            cross: "0"
+            runtime: true
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: ripex.win32-x64-msvc.node
+            cross: "0"
+            runtime: true
+
+    steps:
+      # actions/checkout v4 (reviewed immutable commit)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install Node.js 24
+        # actions/setup-node v4 (reviewed immutable commit)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: Install pnpm 10.28.2
+        run: npm install --global pnpm@10.28.2
+
+      - name: Install Bun 1.3.14
+        run: npm install --global bun@1.3.14
+      - name: Install Rust 1.88.0 and target
+        # dtolnay/rust-toolchain (reviewed immutable commit)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.88.0
+          target: ${{ matrix.target }}
+
+      - name: Install Node binding dependencies
+        working-directory: bindings/node
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build Node binding
+        working-directory: bindings/node
+        env:
+          NAPI_TARGET: ${{ matrix.target }}
+          NAPI_CROSS: ${{ matrix.cross }}
+        run: npm run build:release
+
+      - name: Verify target binary and package metadata
+        working-directory: bindings/node
+        env:
+          EXPECTED_BINARY: ${{ matrix.binary }}
+          EXPECTED_TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - "$EXPECTED_BINARY" "$EXPECTED_TARGET" <<'NODE'
+          const fs = require('node:fs');
+          const binary = process.argv[2];
+          const target = process.argv[3];
+          const binaries = fs.readdirSync('.')
+            .filter((entry) => entry.endsWith('.node'))
+            .filter((entry) => fs.statSync(entry).isFile())
+            .sort();
+          if (binaries.length !== 1 || binaries[0] !== binary) {
+            throw new Error(`expected exactly ${binary}, found ${binaries.join(', ')}`);
+          }
+          const metadata = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const targets = metadata.napi?.targets;
+          if (!Array.isArray(targets) || targets.length !== 5 || !targets.includes(target)) {
+            throw new Error(`package.json does not declare target ${target}`);
+          }
+          if (metadata.scripts?.postinstall) {
+            throw new Error('postinstall network/download hooks are forbidden');
+          }
+          NODE
+
+      - name: Run native Node binding tests
+        if: matrix.runtime == true
+        working-directory: bindings/node
+        run: npm test
+
+      - name: Run Bun native smoke test
+        if: matrix.runtime == true
+        working-directory: bindings/node
+        run: bun test test/index.bun.test.mjs
+      - name: Check public TypeScript declarations
+        if: matrix.runtime == true
+        working-directory: bindings/node
+        run: npm run test:types
+
+      - name: Check package contents
+        if: matrix.runtime == true
+        working-directory: bindings/node
+        run: npm run pack:dry
+
+      - name: Upload Node binding artifact
+        # actions/upload-artifact v4.6.2 (immutable commit)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: node-bindings-${{ matrix.target }}
+          path: |
+            bindings/node/${{ matrix.binary }}
+            bindings/node/index.cjs
+            bindings/node/index.js
+            bindings/node/index.d.ts
+          if-no-files-found: error
+          retention-days: 7

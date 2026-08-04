@@ -148,7 +148,7 @@ jobs:
 
       - name: Install Node binding dependencies
         working-directory: bindings/node
-        run: pnpm install --frozen-lockfile --ignore-scripts --config.minimum-release-age=0
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Build release binding
         working-directory: bindings/node
         env:
@@ -241,7 +241,7 @@ jobs:
 
       - name: Install Node binding dependencies
         working-directory: bindings/node
-        run: pnpm install --frozen-lockfile --ignore-scripts --config.minimum-release-age=0
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
 
       - name: Download target artifacts
@@ -406,7 +406,7 @@ jobs:
 
       - name: Install Node binding dependencies
         working-directory: bindings/node
-        run: pnpm install --frozen-lockfile --ignore-scripts --config.minimum-release-age=0
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Download target artifacts for publication
         # actions/download-artifact v8 (immutable commit)

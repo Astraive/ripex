@@ -218,7 +218,7 @@ jobs:
         with:
           toolchain: nightly
       - name: Install latest cargo-fuzz
-        run: cargo install cargo-fuzz --version 0.13.2 --locked
+        run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
       - name: Replay committed fuzz seeds
         working-directory: tests/fuzz
         shell: bash
@@ -255,7 +255,7 @@ jobs:
         with:
           toolchain: nightly
       - name: Install latest cargo-fuzz
-        run: cargo install cargo-fuzz --version 0.13.2 --locked
+        run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
       - name: Fuzz all parsers briefly
         working-directory: tests/fuzz
         shell: bash

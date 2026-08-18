@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.1 (2026-08-19)
+
+Ripex v0.3.1 introduces native Python bindings via PyO3, stabilizes Node.js bindings on Rust 1.85.0 MSRV with full multi-language coverage, and restores resilient GitHub Actions CI and release workflows.
+
+### Python Bindings (`ripex` on PyPI)
+
+- Added official Python extension crate (`bindings/python/`) built with PyO3 0.23 and Maturin with `abi3-py38` compatibility.
+- Exposed synchronous (`parse_sync`) and asynchronous (`parse` via thread pool) entry points for high-performance non-blocking parsing.
+- Full parity across all 8 supported languages (JavaScript, TypeScript, Python, Go, Rust, C, C++, C#).
+- Rich typed Python objects and dataclass representations for `ParseOutput`, `Facts`, `ParsedSymbol`, `ParsedImport`, `ParsedCall`, `ParsedVariable`, `ParsedParam`, `ImportSpecifier`, `UsageSite`, `TypeKind`, `Span`, `Pos`, `Diagnostic`, `Comment`, and `AstSummary`.
+- Added helper query methods on `Facts`: `find_symbols_by_name`, `find_calls_by_callee`, and `find_imports_by_source`.
+- Full PEP 561 compliance with `py.typed` and `_ripex.pyi` typing stubs, passing `mypy --strict`.
+- Added comprehensive pytest test suite covering all supported languages, error recovery, and safety limits.
+
+### Node.js Bindings (`@astraive/ripex` on npm)
+
+- Aligned MSRV to stable Rust 1.85.0 using napi-rs 2.16 with Node `>=18.0.0` engine compatibility.
+- Unified Dual ESM (`index.js`) and CommonJS (`index.cjs`) loaders with comprehensive TypeScript definitions (`index.d.ts`).
+- Expanded test suite to cover all 8 supported languages across Node.js and Bun runtimes.
+
+### CI / CD & Toolchain
+
+- Replaced invalid Action commits and unpinned actions across all workflows with verified immutable releases.
+- Replaced deprecated runner references with official `macos-13` (x86_64) and `macos-14` (arm64) runners.
+- Added Python bindings matrix build and release workflows supporting Linux, macOS, and Windows wheels.
+
 ## v0.3.0 (2026-08-01)
 
 Ripex v0.3.0 is published: [crates.io](https://crates.io/crates/ripex/0.3.0) ·

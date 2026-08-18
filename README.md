@@ -10,13 +10,13 @@ ripex is not a compiler, linker, runtime, or type checker. The optional
 `check` command delegates validation to the language's existing production
 toolchain; it does not reimplement compiler semantics.
 
-## Ripex v0.3.0
+## Ripex v0.3.1
 
-Ripex v0.3.0 was published on 2026-08-01:
-[crates.io package](https://crates.io/crates/ripex/0.3.0) ·
-[docs.rs API documentation](https://docs.rs/ripex/0.3.0) ·
-[GitHub release](https://github.com/Astraive/ripex/releases/tag/v0.3.0).
-
+Ripex v0.3.1 is available across Cargo, NPM, and PyPI:
+- **Rust**: `cargo add ripex` · [crates.io](https://crates.io/crates/ripex/0.3.1) · [docs.rs](https://docs.rs/ripex/0.3.1)
+- **Node.js**: `npm install @astraive/ripex` · [npmjs.com](https://www.npmjs.com/package/@astraive/ripex)
+- **Python**: `pip install ripex` · [pypi.org](https://pypi.org/project/ripex/)
+- **Release**: [GitHub Release](https://github.com/Astraive/ripex/releases/tag/v0.3.1)
 ## Supported languages
 
 | Language | Extensions | Structural parser | Optional external validation |
@@ -68,6 +68,40 @@ generic call metadata; plus variable scope, usage-site, and storage metadata.
 Consumers can serialize these native facts with the `serde` feature, then build
 their own cross-file relationships without discarding parser provenance.
 
+## Bindings (Node.js & Python)
+
+### Node.js (`@astraive/ripex`)
+
+```bash
+npm install @astraive/ripex
+```
+
+```javascript
+import { parseSync } from '@astraive/ripex';
+
+const output = parseSync('export function add(a: number, b: number) { return a + b; }', {
+  language: 'typescript',
+});
+console.log(output.facts.symbols);
+```
+
+### Python (`ripex`)
+
+```bash
+pip install ripex
+```
+
+```python
+import ripex
+
+output = ripex.parse_sync(
+    "def calculate(x: float) -> float:\n    return x * 2\n",
+    language="python",
+)
+for sym in output.facts.symbols:
+    print(sym.name, sym.kind)
+```
+
 ## Library
 
 ```rust
@@ -118,7 +152,7 @@ library dependency and choose only the language features you need:
 
 ```toml
 [dependencies]
-ripex = { version = "0.3.0", default-features = false, features = ["lang-rust", "lang-js"] }
+ripex = { version = "0.3.1", default-features = false, features = ["lang-rust", "lang-js"] }
 ```
 
 | Feature | Languages |
@@ -139,7 +173,7 @@ ripex = { version = "0.3.0", default-features = false, features = ["lang-rust", 
 To install the CLI binary, opt in explicitly:
 
 ```sh
-cargo install ripex --version 0.3.0 --features cli
+cargo install ripex --version 0.3.1 --features cli
 ```
 
 ```sh

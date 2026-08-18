@@ -3,8 +3,16 @@
 This document records the shipped Ripex release and provides reusable steps
 for future releases.
 
-## Published release: Ripex v0.3.0
+## Release: Ripex v0.3.1
 
+Ripex v0.3.1 publishes parity releases across Cargo, NPM, and PyPI:
+
+- **Rust Crate**: `cargo add ripex` · [crates.io](https://crates.io/crates/ripex/0.3.1) · [docs.rs](https://docs.rs/ripex/0.3.1)
+- **Node.js Package**: `npm install @astraive/ripex` · [npmjs.com](https://www.npmjs.com/package/@astraive/ripex)
+- **Python Package**: `pip install ripex` · [pypi.org](https://pypi.org/project/ripex/)
+- **GitHub Release**: [GitHub release](https://github.com/Astraive/ripex/releases/tag/v0.3.1)
+
+## Historical release: Ripex v0.3.0
 Ripex v0.3.0 was published on 2026-08-01:
 
 - [crates.io package](https://crates.io/crates/ripex/0.3.0)

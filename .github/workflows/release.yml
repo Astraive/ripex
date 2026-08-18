@@ -27,14 +27,14 @@ jobs:
       contents: read
     steps:
       - name: Check out tagged revision
-        # actions/checkout v7 (reviewed immutable commit)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
 
       - name: Install Rust 1.85.0
-        # dtolnay/rust-toolchain (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        # dtolnay/rust-toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: 1.85.0
           components: clippy, rustfmt
@@ -92,7 +92,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary: ripex
             archive_suffix: tar.gz
-          - os: macos-15-intel
+          - os: macos-13
             target: x86_64-apple-darwin
             binary: ripex
             archive_suffix: tar.gz
@@ -102,23 +102,22 @@ jobs:
             archive_suffix: zip
     steps:
       - name: Check out tagged revision
-        # actions/checkout v7 (reviewed immutable commit)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
 
       - name: Install Rust 1.85.0
-        # dtolnay/rust-toolchain (reviewed immutable commit)
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        # dtolnay/rust-toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: 1.85.0
           target: ${{ matrix.target }}
       - name: Install latest Python for deterministic packaging
-        # actions/setup-python v7 (reviewed immutable commit)
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        # actions/setup-python v5.4.0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: '3.14'
-          check-latest: true
+          python-version: '3.12'
 
       - name: Build CLI with explicit features
         run: cargo build --locked --release --target "${{ matrix.target }}" --no-default-features --features "cli,lang-all" --bin ripex
@@ -189,8 +188,8 @@ jobs:
           echo "ARCHIVE_NAME=$(basename "$archive")" >> "$GITHUB_ENV"
 
       - name: Upload packaged artifact
-        # actions/upload-artifact v7 (immutable commit)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        # actions/upload-artifact v4.6.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ripex-${{ github.ref_name }}-${{ matrix.target }}
           path: dist
@@ -206,8 +205,8 @@ jobs:
       contents: write
     steps:
       - name: Download packaged artifacts
-        # actions/download-artifact v8 (immutable commit)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        # actions/download-artifact v4.1.8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: ripex-${{ github.ref_name }}-*
           path: release-assets

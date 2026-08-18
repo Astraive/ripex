@@ -9,6 +9,17 @@
 node_modules/
 **/*.rs.bk
 
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.dylib
+.pytest_cache/
+.mypy_cache/
+/bindings/python/dist/
+/bindings/python/target/
+
 # Editor / OS noise
 .idea/
 .vscode/

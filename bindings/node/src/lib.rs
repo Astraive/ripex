@@ -4,7 +4,7 @@ use std::path::Path;
 use napi::{Error, Result};
 use napi_derive::napi;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 #[napi(string_enum)]
 pub enum Language {
     #[napi(value = "javascript")]
@@ -25,7 +25,7 @@ pub enum Language {
     CSharp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 #[napi(string_enum)]
 pub enum Status {
     #[napi(value = "complete")]
@@ -38,7 +38,7 @@ pub enum Status {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 #[napi(string_enum)]
 pub enum CommentKind {
     #[napi(value = "line")]

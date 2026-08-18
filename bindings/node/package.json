@@ -1,6 +1,6 @@
 {
   "name": "@astraive/ripex",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Native multi-language structural parsing and fact extraction for Node.js.",
   "keywords": ["parsing", "structural-parsing", "ast", "fact-extraction", "code-analysis", "tree-sitter"],
   "license": "MIT",
@@ -21,11 +21,13 @@
     }
   },
   "engines": {
-    "node": ">=26.0.0"
+    "node": ">=18.0.0"
   },
-  "packageManager": "pnpm@11.20.0",
+  "packageManager": "pnpm@10.28.2",
   "napi": {
+    "name": "ripex",
     "binaryName": "ripex",
+    "packageName": "@astraive/ripex",
     "targets": [
       "x86_64-unknown-linux-gnu",
       "aarch64-unknown-linux-gnu",
@@ -42,8 +44,8 @@
     "pack:dry": "npm pack --dry-run --ignore-scripts"
   },
   "devDependencies": {
-    "@napi-rs/cli": "3.8.2",
-    "@types/node": "26.1.2",
-    "typescript": "7.0.2"
+    "@napi-rs/cli": "2.18.4",
+    "@types/node": "^20.17.0",
+    "typescript": "^5.7.0"
   }
 }

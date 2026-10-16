@@ -126,9 +126,11 @@ test("input over the native one MiB limit returns a limit diagnostic", () => {
   );
 });
 
-test("parses JavaScript source and extracts facts", () => {
+test("parses JavaScript source and extracts facts, comments, and JSDoc", () => {
   const jsSource = `// JS line comment
 import { compute } from "./math.js";
+
+/** Calculator class JSDoc */
 export class Calculator {
   calculate(val) {
     return compute(val);
@@ -144,16 +146,22 @@ const output = instance.calculate(42);
   assert.ok(result.facts.imports.length > 0);
   assert.ok(result.facts.calls.length > 0);
   assert.ok(result.facts.variables.length > 0);
+  assert.ok(result.comments.length > 0);
   assert.ok(result.comments.some((c) => c.text.includes("JS line comment")));
+  const calc = result.facts.symbols.find((s) => s.name === "Calculator");
+  assert.ok(calc && calc.docString && calc.docString.includes("Calculator class JSDoc"));
   assert.ok(result.astSummary);
 });
 
-test("parses Python source and extracts facts", () => {
-  const pySource = `import os
+test("parses Python source and extracts facts, comments, and docstrings", () => {
+  const pySource = `# Python module comment
+import os
 from math import sqrt
 
 class Geometry:
+    """Geometry calculation class."""
     def distance(self, x: float, y: float) -> float:
+        """Compute euclidean distance."""
         return sqrt(x * x + y * y)
 
 geo = Geometry()
@@ -166,14 +174,22 @@ res = geo.distance(3.0, 4.0)
   assert.ok(result.facts.imports.length > 0);
   assert.ok(result.facts.calls.length > 0);
   assert.ok(result.facts.variables.length > 0);
+  assert.ok(result.comments.length > 0);
+  assert.ok(result.comments.some((c) => c.text.includes("Python module comment")));
+  const geom = result.facts.symbols.find((s) => s.name === "Geometry");
+  assert.ok(geom && geom.docString && geom.docString.includes("Geometry calculation"));
+  const dist = result.facts.symbols.find((s) => s.name === "distance");
+  assert.ok(dist && dist.docString && dist.docString.includes("Compute euclidean distance"));
   assert.ok(result.astSummary);
 });
 
-test("parses Go source and extracts facts", () => {
-  const goSource = `package main
+test("parses Go source and extracts facts, comments, and docstrings", () => {
+  const goSource = `// Package main implements services.
+package main
 
 import "fmt"
 
+// Service coordinates background jobs.
 type Service struct {
     Port int
 }
@@ -194,17 +210,24 @@ func main() {
   assert.ok(result.facts.imports.length > 0);
   assert.ok(result.facts.calls.length > 0);
   assert.ok(result.facts.variables.length > 0);
+  assert.ok(result.comments.length > 0);
+  assert.ok(result.comments.some((c) => c.text.includes("Package main")));
+  const svc = result.facts.symbols.find((s) => s.name === "Service");
+  assert.ok(svc && svc.docString && svc.docString.includes("Service coordinates"));
   assert.ok(result.astSummary);
 });
 
-test("parses Rust source and extracts facts", () => {
-  const rustSource = `use std::sync::Arc;
+test("parses Rust source and extracts facts, comments, and doc comments", () => {
+  const rustSource = `// Top-level line comment
+use std::sync::Arc;
 
+/// A background worker representation.
 pub struct Worker {
     pub id: u32,
 }
 
 impl Worker {
+    /// Creates a new worker instance.
     pub fn new(id: u32) -> Self {
         Self { id }
     }
@@ -225,12 +248,19 @@ pub fn start() {
   assert.ok(result.facts.imports.length > 0);
   assert.ok(result.facts.calls.length > 0);
   assert.ok(result.facts.variables.length > 0);
+  assert.ok(result.comments.length > 0);
+  assert.ok(result.comments.some((c) => c.text.includes("Top-level line comment")));
+  assert.ok(result.comments.some((c) => c.kind === "doc" || c.text.includes("background worker")));
+  const worker = result.facts.symbols.find((s) => s.name === "Worker");
+  assert.ok(worker && worker.docString && worker.docString.includes("background worker"));
   assert.ok(result.astSummary);
 });
 
-test("parses C source and extracts facts", () => {
-  const cSource = `#include <stdio.h>
+test("parses C source and extracts facts, comments, and doxygen doc comments", () => {
+  const cSource = `/* Global C header comment */
+#include <stdio.h>
 
+/** Record data structure documentation. */
 typedef struct {
     int id;
 } Record;
@@ -252,14 +282,18 @@ int main() {
   assert.ok(result.facts.imports.length > 0);
   assert.ok(result.facts.calls.length > 0);
   assert.ok(result.facts.variables.length > 0);
+  assert.ok(result.comments.length > 0);
+  assert.ok(result.comments.some((c) => c.text.includes("Global C header comment")));
   assert.ok(result.astSummary);
 });
 
-test("parses C++ source and extracts facts", () => {
-  const cppSource = `#include <iostream>
+test("parses C++ source and extracts facts, comments, and doc comments", () => {
+  const cppSource = `// C++ file header comment
+#include <iostream>
 #include <string>
 
 namespace engine {
+/** Engine execution task unit. */
 class Task {
 public:
     void execute() {
@@ -281,14 +315,22 @@ int main() {
   assert.ok(result.facts.imports.length > 0);
   assert.ok(result.facts.calls.length > 0);
   assert.ok(result.facts.variables.length > 0);
+  assert.ok(result.comments.length > 0);
+  assert.ok(result.comments.some((c) => c.text.includes("C++ file header comment")));
+  const task = result.facts.symbols.find((s) => s.name === "Task");
+  assert.ok(task && task.docString && task.docString.includes("Engine execution task"));
   assert.ok(result.astSummary);
 });
 
-test("parses C# source and extracts facts", () => {
-  const csSource = `using System;
+test("parses C# source and extracts facts, comments, and XML doc comments", () => {
+  const csSource = `// C# file comment
+using System;
 
 namespace Enterprise.App
 {
+    /// <summary>
+    /// Performs enterprise background work.
+    /// </summary>
     public class Worker
     {
         public void PerformWork()
@@ -314,5 +356,10 @@ namespace Enterprise.App
   assert.ok(result.facts.imports.length > 0);
   assert.ok(result.facts.calls.length > 0);
   assert.ok(result.facts.variables.length > 0);
+  assert.ok(result.comments.length > 0);
+  assert.ok(result.comments.some((c) => c.text.includes("C# file comment")));
+  assert.ok(result.comments.some((c) => c.kind === "doc" || c.text.includes("background work")));
+  const worker = result.facts.symbols.find((s) => s.name.includes("Worker"));
+  assert.ok(worker && worker.docString && worker.docString.includes("background work"));
   assert.ok(result.astSummary);
 });

@@ -47,6 +47,8 @@ pub enum CommentKind {
     Block,
     #[napi(value = "hashbang")]
     Hashbang,
+    #[napi(value = "doc")]
+    Doc,
 }
 
 #[napi(object)]
@@ -323,6 +325,7 @@ fn comment_kind(kind: ripex::facts::CommentKind) -> CommentKind {
         ripex::facts::CommentKind::Line => CommentKind::Line,
         ripex::facts::CommentKind::Block => CommentKind::Block,
         ripex::facts::CommentKind::Hashbang => CommentKind::Hashbang,
+        ripex::facts::CommentKind::Doc => CommentKind::Doc,
     }
 }
 

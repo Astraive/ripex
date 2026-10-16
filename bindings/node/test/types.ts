@@ -69,7 +69,7 @@ function consumeDiagnostic(diagnostic: Diagnostic): void {
 }
 
 function consumeComment(comment: Comment): void {
-  const kind: "line" | "block" | "hashbang" = comment.kind;
+  const kind: "line" | "block" | "hashbang" | "doc" = comment.kind;
   const text: string = comment.text;
   consumeSpan(comment.span);
   void kind;

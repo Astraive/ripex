@@ -22,7 +22,8 @@ export const enum Status {
 export const enum CommentKind {
   Line = 'line',
   Block = 'block',
-  Hashbang = 'hashbang'
+  Hashbang = 'hashbang',
+  Doc = 'doc'
 }
 export interface ParseOptions {
   language?: string

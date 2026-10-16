@@ -104,10 +104,18 @@ fn walk_stmt(
         Stmt::ClassDef(cd, span) => {
             let bases: Vec<String> = cd.bases.iter().map(expr_to_string).collect();
             let is_test = is_test_name(&cd.name) || cd.decorators.iter().any(is_pytest_decorator);
+            let doc_string = cd.body.first().and_then(|stmt| match stmt {
+                Stmt::Expr(Expr::Literal(Literal::String(s, _, _), _), _) => {
+                    let cleaned = crate::facts::clean_doc_comment(s);
+                    (!cleaned.is_empty()).then_some(cleaned)
+                }
+                _ => None,
+            });
             let mut sym = ParsedSymbol::builder(SymbolKind::Class, &cd.name)
                 .lines(span.start.line, span.end.line)
                 .exported(true)
                 .is_test(is_test)
+                .doc_string(doc_string)
                 .build();
             sym.base_classes = bases;
             symbols.push(sym);
@@ -318,10 +326,12 @@ fn extract_func_symbol(
     };
 
     let doc_string = fd.body.first().and_then(|stmt| match stmt {
-        Stmt::Expr(Expr::Literal(Literal::String(s, _, _), _), _) => Some(s.clone()),
+        Stmt::Expr(Expr::Literal(Literal::String(s, _, _), _), _) => {
+            let cleaned = crate::facts::clean_doc_comment(s);
+            (!cleaned.is_empty()).then_some(cleaned)
+        }
         _ => None,
     });
-
     let sym = ParsedSymbol::builder(kind, &fd.name)
         .lines(span.start.line, span.end.line)
         .exported(true)

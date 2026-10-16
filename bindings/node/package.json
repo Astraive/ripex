@@ -1,6 +1,6 @@
 {
   "name": "@astraive/ripex",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Native multi-language structural parsing and fact extraction for Node.js.",
   "keywords": ["parsing", "structural-parsing", "ast", "fact-extraction", "code-analysis", "tree-sitter"],
   "license": "MIT",

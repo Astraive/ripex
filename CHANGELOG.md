@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.4.0 (2026-10-16)
+
+Ripex v0.4.0 brings universal comment retention and docstring/doc-comment extraction to all eight supported languages (JavaScript, TypeScript, Python, Go, Rust, C, C++, C#), adding `CommentKind::Doc` and associating clean doc comments with extracted symbols across Rust core, Node.js bindings, and Python bindings.
+
+### Universal Comment Retention
+
+- Wired source comment collection across all 8 language parser families (`c`, `cpp`, `csharp`, `go`, `python`, `rust`, and `js`).
+- Added `CommentKind::Doc` to differentiate documentation comments (`///`, `/** ... */`, JSDoc, XML doc comments) from regular line and block comments.
+- Populated `ParseResult::comments` in all language outputs with exact source spans and comment classifications.
+- Updated CLI JSON output (`ripex parse <file> --json`) to include non-empty comments across all languages.
+
+### Universal Symbol Docstrings (`doc_string`)
+
+- Added automated doc-comment association in `extract_unchecked` across all language symbols.
+- Python: extracted and normalized function and class docstrings from body string literals.
+- Rust: extracted `///` and `/** ... */` doc comments for functions, structs, enums, traits, methods.
+- Go: extracted contiguous `// <Name> ...` doc comments immediately preceding declarations.
+- C# & C/C++: extracted XML doc comments (`/// ...`) and Doxygen comments (`/** ... */`).
+- JavaScript & TypeScript: extracted JSDoc comments (`/** ... */`) preceding classes, functions, and interfaces.
+- Added `clean_doc_comment` utility to strip comment markers while preserving markdown and formatted prose.
+
+### Node.js & Python Bindings Parity
+
+- Node bindings: added `CommentKind.Doc = 'doc'`, returning full comments array and `docString` on symbols across all languages.
+- Python bindings: added `CommentKind.DOC = 'doc'`, returning full comments list and `doc_string` on symbols across all languages.
+- Updated TypeScript definitions (`index.d.ts`) and Python typing stubs (`_ripex.pyi`).
+
 ## v0.3.1 (2026-08-19)
 
 Ripex v0.3.1 introduces native Python bindings via PyO3, stabilizes Node.js bindings on Rust 1.85.0 MSRV with full multi-language coverage, and restores resilient GitHub Actions CI and release workflows.

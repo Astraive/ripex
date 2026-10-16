@@ -9,7 +9,7 @@ on:
       version:
         description: "Version to assemble (without the leading v)"
         required: true
-        default: "0.3.1"
+        default: "0.4.0"
         type: string
       publish:
         description: "Enable npm publication (also requires NPM_PUBLISH_ENABLED=true)"

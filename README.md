@@ -10,13 +10,13 @@ ripex is not a compiler, linker, runtime, or type checker. The optional
 `check` command delegates validation to the language's existing production
 toolchain; it does not reimplement compiler semantics.
 
-## Ripex v0.3.1
+## Ripex v0.4.0
 
-Ripex v0.3.1 is available across Cargo, NPM, and PyPI:
-- **Rust**: `cargo add ripex` · [crates.io](https://crates.io/crates/ripex/0.3.1) · [docs.rs](https://docs.rs/ripex/0.3.1)
+Ripex v0.4.0 is available across Cargo, NPM, and PyPI:
+- **Rust**: `cargo add ripex` · [crates.io](https://crates.io/crates/ripex/0.4.0) · [docs.rs](https://docs.rs/ripex/0.4.0)
 - **Node.js**: `npm install @astraive/ripex` · [npmjs.com](https://www.npmjs.com/package/@astraive/ripex)
 - **Python**: `pip install ripex` · [pypi.org](https://pypi.org/project/ripex/)
-- **Release**: [GitHub Release](https://github.com/Astraive/ripex/releases/tag/v0.3.1)
+- **Release**: [GitHub Release](https://github.com/Astraive/ripex/releases/tag/v0.4.0)
 ## Supported languages
 
 | Language | Extensions | Structural parser | Optional external validation |
@@ -55,12 +55,13 @@ Each language pipeline produces four fact types:
 - **Calls** — function calls, method calls, constructor calls, path calls
 - **Variables** — local bindings, parameters, statics, constants with type info
 
-JavaScript and TypeScript also retain hashbang, line, and block comments with
-precise source spans through `ParseResult::comments`, including comments at
-end-of-file. Type-only imports/re-exports, dynamic imports, optional calls,
-awaited calls, generic call arguments, and destructured bindings are emitted
+All eight languages retain line, block, and doc comments with precise source
+spans through `ParseResult::comments`, including trailing comments at end-of-file.
+Doc comments (`///`, `/** ... */`, JSDoc, XML doc comments, and Python docstrings)
+are classified with `CommentKind::Doc` and automatically associated with symbol
+definitions via `ParsedSymbol::doc_string`. Type-only imports/re-exports, dynamic imports,
+optional calls, awaited calls, generic call arguments, and destructured bindings are emitted
 as first-class facts.
-
 The public fact payloads retain the detail needed for lossless downstream
 indexing: symbol parameters/defaults/docstrings/attributes and type metadata;
 import specifiers and re-export metadata; awaited, optional, receiver, and
@@ -152,8 +153,7 @@ library dependency and choose only the language features you need:
 
 ```toml
 [dependencies]
-ripex = { version = "0.3.1", default-features = false, features = ["lang-rust", "lang-js"] }
-```
+ripex = { version = "0.4.0", default-features = false, features = ["lang-rust", "lang-js"] }
 
 | Feature | Languages |
 |---------|-----------|
@@ -173,7 +173,7 @@ ripex = { version = "0.3.1", default-features = false, features = ["lang-rust", 
 To install the CLI binary, opt in explicitly:
 
 ```sh
-cargo install ripex --version 0.3.1 --features cli
+cargo install ripex --version 0.4.0 --features cli
 ```
 
 ```sh

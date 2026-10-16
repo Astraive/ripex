@@ -3,14 +3,17 @@
 This document records the shipped Ripex release and provides reusable steps
 for future releases.
 
-## Release: Ripex v0.3.1
+## Release: Ripex v0.4.0
 
-Ripex v0.3.1 publishes parity releases across Cargo, NPM, and PyPI:
+Ripex v0.4.0 publishes universal comment retention and docstring extraction across Cargo, NPM, and PyPI:
 
-- **Rust Crate**: `cargo add ripex` · [crates.io](https://crates.io/crates/ripex/0.3.1) · [docs.rs](https://docs.rs/ripex/0.3.1)
+- **Rust Crate**: `cargo add ripex` · [crates.io](https://crates.io/crates/ripex/0.4.0) · [docs.rs](https://docs.rs/ripex/0.4.0)
 - **Node.js Package**: `npm install @astraive/ripex` · [npmjs.com](https://www.npmjs.com/package/@astraive/ripex)
 - **Python Package**: `pip install ripex` · [pypi.org](https://pypi.org/project/ripex/)
-- **GitHub Release**: [GitHub release](https://github.com/Astraive/ripex/releases/tag/v0.3.1)
+- **GitHub Release**: [GitHub release](https://github.com/Astraive/ripex/releases/tag/v0.4.0)
+
+## Historical release: Ripex v0.3.1
+Ripex v0.3.1 was published on 2026-10-16 with initial PyO3 Python bindings and Node toolchain fixes.
 
 ## Historical release: Ripex v0.3.0
 Ripex v0.3.0 was published on 2026-08-01:

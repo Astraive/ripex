@@ -9,7 +9,7 @@ on:
       version:
         description: "Version to publish (without the leading v)"
         required: true
-        default: "0.3.1"
+        default: "0.4.0"
         type: string
       dry_run:
         description: "Run dry-run only (do not upload to crates.io)"
@@ -106,8 +106,8 @@ jobs:
               echo "Published successfully!"
             else
               echo "cargo publish returned non-zero, checking if version is already published..."
-              if cargo search ripex --limit 1 | grep -q 'ripex = "0.3.1"'; then
-                echo "ripex 0.3.1 is already published on crates.io."
+              if cargo search ripex --limit 1 | grep -q 'ripex = "0.4.0"'; then
+                echo "ripex 0.4.0 is already published on crates.io."
               else
                 exit 1
               fi

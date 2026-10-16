@@ -5,6 +5,7 @@ pub enum CommentKind {
     Line,
     Block,
     Hashbang,
+    Doc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -613,5 +614,165 @@ impl VarBuilder {
     }
     pub fn build(self) -> ParsedVariable {
         self.inner
+    }
+}
+
+/// Clean and normalize doc comment text by stripping comment markers and leading indentation.
+pub fn clean_doc_comment(raw: &str) -> String {
+    let text = raw.trim();
+    if (text.starts_with("\"\"\"") && text.ends_with("\"\"\"") && text.len() >= 6)
+        || (text.starts_with("'''") && text.ends_with("'''") && text.len() >= 6)
+    {
+        return text[3..text.len() - 3].trim().to_string();
+    }
+    if text.starts_with("/**") && text.ends_with("*/") {
+        let inner = &text[3..text.len() - 2];
+        let lines: Vec<&str> = inner.lines().collect();
+        let mut cleaned_lines = Vec::new();
+        for line in lines {
+            let trimmed = line.trim();
+            let content = if let Some(stripped) = trimmed.strip_prefix('*') {
+                stripped.strip_prefix(' ').unwrap_or(stripped)
+            } else {
+                trimmed
+            };
+            cleaned_lines.push(content);
+        }
+        return cleaned_lines.join("\n").trim().to_string();
+    }
+    if text.starts_with("///") || text.starts_with("//!") {
+        let lines: Vec<&str> = text.lines().collect();
+        let mut cleaned_lines = Vec::new();
+        for line in lines {
+            let trimmed = line.trim();
+            let content = if let Some(stripped) = trimmed.strip_prefix("///") {
+                stripped.strip_prefix(' ').unwrap_or(stripped)
+            } else if let Some(stripped) = trimmed.strip_prefix("//!") {
+                stripped.strip_prefix(' ').unwrap_or(stripped)
+            } else if let Some(stripped) = trimmed.strip_prefix("//") {
+                stripped.strip_prefix(' ').unwrap_or(stripped)
+            } else {
+                trimmed
+            };
+            cleaned_lines.push(content);
+        }
+        return cleaned_lines.join("\n").trim().to_string();
+    }
+    if text.starts_with("//") {
+        let lines: Vec<&str> = text.lines().collect();
+        let mut cleaned_lines = Vec::new();
+        for line in lines {
+            let trimmed = line.trim();
+            let content = if let Some(stripped) = trimmed.strip_prefix("//") {
+                stripped.strip_prefix(' ').unwrap_or(stripped)
+            } else {
+                trimmed
+            };
+            cleaned_lines.push(content);
+        }
+        return cleaned_lines.join("\n").trim().to_string();
+    }
+    text.to_string()
+}
+
+/// Associate preceding doc comments with symbols that lack an extracted docstring.
+pub fn associate_doc_comments(symbols: &mut [ParsedSymbol], comments: &[ParsedComment]) {
+    if symbols.is_empty() || comments.is_empty() {
+        return;
+    }
+
+    for sym in symbols.iter_mut() {
+        if sym.doc_string.is_some() {
+            continue;
+        }
+
+        let sym_line = sym.line_start;
+        if sym_line <= 1 {
+            continue;
+        }
+
+        let mut matching_comments: Vec<&ParsedComment> = Vec::new();
+        let mut target_line = sym_line - 1;
+
+        for comment in comments.iter().rev() {
+            match comment.span.end.line.cmp(&target_line) {
+                std::cmp::Ordering::Equal => {
+                    let is_candidate = matches!(comment.kind, CommentKind::Doc)
+                        || comment.text.trim_start().starts_with("/**")
+                        || comment.text.trim_start().starts_with("///")
+                        || comment.text.trim_start().starts_with("//");
+
+                    if is_candidate {
+                        matching_comments.push(comment);
+                        if comment.span.start.line > 1 {
+                            target_line = comment.span.start.line - 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                std::cmp::Ordering::Less => break,
+                std::cmp::Ordering::Greater => continue,
+            }
+        }
+
+        if !matching_comments.is_empty() {
+            matching_comments.reverse();
+            let has_doc_marker = matching_comments.iter().any(|c| {
+                matches!(c.kind, CommentKind::Doc)
+                    || c.text.trim_start().starts_with("/**")
+                    || c.text.trim_start().starts_with("///")
+            });
+
+            let is_go_or_doc = has_doc_marker
+                || matching_comments
+                    .iter()
+                    .all(|c| c.text.trim_start().starts_with("//"));
+
+            if is_go_or_doc {
+                let merged_raw = matching_comments
+                    .iter()
+                    .map(|c| c.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let cleaned = clean_doc_comment(&merged_raw);
+                if !cleaned.is_empty() {
+                    sym.doc_string = Some(cleaned);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod comment_tests {
+    use super::*;
+    use crate::span::{Pos, Span};
+
+    #[test]
+    fn test_clean_doc_comments() {
+        assert_eq!(clean_doc_comment("/// hello world"), "hello world");
+        assert_eq!(clean_doc_comment("/**\n * block doc\n */"), "block doc");
+        assert_eq!(
+            clean_doc_comment("\"\"\"python docstring\"\"\""),
+            "python docstring"
+        );
+        assert_eq!(clean_doc_comment("// simple comment"), "simple comment");
+    }
+
+    #[test]
+    fn test_associate_doc_comments() {
+        let mut symbols = vec![ParsedSymbol::builder(SymbolKind::Function, "add")
+            .lines(3, 5)
+            .build()];
+        let comments = vec![ParsedComment {
+            kind: CommentKind::Doc,
+            text: "/// Adds two numbers".to_string(),
+            span: Span::new(Pos::new(0, 2, 0), Pos::new(20, 2, 20)),
+        }];
+        associate_doc_comments(&mut symbols, &comments);
+        assert_eq!(symbols[0].doc_string.as_deref(), Some("Adds two numbers"));
     }
 }

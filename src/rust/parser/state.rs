@@ -35,6 +35,26 @@ impl Parser {
         }
     }
 
+    pub fn collect_comments(&self) -> Vec<crate::facts::ParsedComment> {
+        self.tokens
+            .iter()
+            .flat_map(|tok| &tok.leading_comments)
+            .map(|c| crate::facts::ParsedComment {
+                kind: match c.kind {
+                    super::super::lexer::token::CommentKind::Line => {
+                        crate::facts::CommentKind::Line
+                    }
+                    super::super::lexer::token::CommentKind::Block => {
+                        crate::facts::CommentKind::Block
+                    }
+                    super::super::lexer::token::CommentKind::Doc => crate::facts::CommentKind::Doc,
+                },
+                text: c.text.clone(),
+                span: c.span,
+            })
+            .collect()
+    }
+
     pub fn peek(&self) -> TokenKind {
         self.tokens
             .get(self.pos)

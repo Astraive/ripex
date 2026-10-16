@@ -491,12 +491,12 @@ macro_rules! lang_parser_impl {
                 $exts
             }
             fn parse(&self, source: &str) -> ParseResult {
-                let (ast, errors) = $lang::parse_program(source);
+                let (ast, errors, comments) = $lang::parse_program_with_comments(source);
                 let status = status_from_errors(&errors);
                 ParseResult {
                     source: source.to_string(),
                     errors,
-                    comments: Vec::new(),
+                    comments,
                     ast: Program::$variant(ast),
                     status,
                     language: Language::$variant,
@@ -506,7 +506,11 @@ macro_rules! lang_parser_impl {
             fn extract_unchecked(&self, result: &ParseResult) -> ExtractionResult {
                 #[allow(unreachable_patterns)]
                 match &result.ast {
-                    Program::$variant(ast) => $lang::facts::extract_facts(ast),
+                    Program::$variant(ast) => {
+                        let mut facts = $lang::facts::extract_facts(ast);
+                        crate::facts::associate_doc_comments(&mut facts.symbols, &result.comments);
+                        facts
+                    }
                     _ => ExtractionResult::new(),
                 }
             }
@@ -646,6 +650,8 @@ impl LanguageParser for JavascriptParser {
                 .map(|comment| ParsedComment {
                     kind: if comment.text.starts_with("#!") {
                         CommentKind::Hashbang
+                    } else if comment.text.starts_with("/**") {
+                        CommentKind::Doc
                     } else if comment.multi_line {
                         CommentKind::Block
                     } else {
@@ -664,7 +670,11 @@ impl LanguageParser for JavascriptParser {
     fn extract_unchecked(&self, result: &ParseResult) -> ExtractionResult {
         #[allow(unreachable_patterns)]
         match &result.ast {
-            Program::Js(program, arena) => js::facts::extract_facts(program, arena),
+            Program::Js(program, arena) => {
+                let mut facts = js::facts::extract_facts(program, arena);
+                crate::facts::associate_doc_comments(&mut facts.symbols, &result.comments);
+                facts
+            }
             _ => ExtractionResult::new(),
         }
     }

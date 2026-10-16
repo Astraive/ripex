@@ -10,6 +10,17 @@ use super::ast::{Program, Stmt};
 use crate::span::Span;
 
 pub fn parse_program(source: &str) -> (Program, Vec<crate::diagnostics::ParseError>) {
+    let (program, errors, _) = parse_program_with_comments(source);
+    (program, errors)
+}
+
+pub fn parse_program_with_comments(
+    source: &str,
+) -> (
+    Program,
+    Vec<crate::diagnostics::ParseError>,
+    Vec<crate::facts::ParsedComment>,
+) {
     let mut parser = Parser::new(source);
     let start = parser.token_start();
     let decls = parser.parse_compilation_unit();
@@ -17,7 +28,8 @@ pub fn parse_program(source: &str) -> (Program, Vec<crate::diagnostics::ParseErr
         decls,
         span: Span::new(start, parser.prev_end()),
     };
-    (program, parser.errors)
+    let comments = parser.collect_comments();
+    (program, parser.errors, comments)
 }
 
 pub fn parse_script(source: &str) -> (Vec<Stmt>, Vec<crate::diagnostics::ParseError>) {

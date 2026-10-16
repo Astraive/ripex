@@ -326,11 +326,9 @@ impl<'a> Lexer<'a> {
                     let start = self.scanner.position();
                     self.scanner.advance();
                     self.scanner.advance();
-                    if self.scanner.peek() == Some('/') {
-                        // Doc comment ///
-                        self.scanner.advance();
-                    }
-                    let is_doc = self.scanner.peek() == Some('/');
+                    let is_doc = (self.scanner.peek() == Some('/')
+                        && self.scanner.peek_ahead(1) != Some('/'))
+                        || self.scanner.peek() == Some('!');
                     while let Some(ch) = self.scanner.peek() {
                         if ch == '\n' || ch == '\r' {
                             break;
@@ -351,9 +349,11 @@ impl<'a> Lexer<'a> {
                 }
                 Some('/') if self.scanner.peek_ahead(1) == Some('*') => {
                     let start = self.scanner.position();
-                    let is_doc = self.scanner.peek_ahead(1) == Some('*');
                     self.scanner.advance();
                     self.scanner.advance();
+                    let is_doc = (self.scanner.peek() == Some('*')
+                        && self.scanner.peek_ahead(1) != Some('/'))
+                        || self.scanner.peek() == Some('!');
                     while let Some(ch) = self.scanner.peek() {
                         if ch == '*' && self.scanner.peek_ahead(1) == Some('/') {
                             self.scanner.advance();

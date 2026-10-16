@@ -15,4 +15,4 @@ pub mod tests;
 
 pub use ast::*;
 pub use lexer::*;
-pub use parser::{parse_program, parse_script};
+pub use parser::{parse_program, parse_program_with_comments, parse_script};

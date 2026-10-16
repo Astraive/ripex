@@ -79,11 +79,12 @@ git tag -a v<VERSION> -m "Release v<VERSION>"
 git push origin v<VERSION>
 ```
 
-Pushing a `v*` tag starts `.github/workflows/release.yml`. The workflow checks
-the tag/package-version match, validates the locked dependency graph, builds
-the CLI for Linux, macOS, and Windows, and creates the GitHub Release only
-after every build succeeds.
+Pushing a `v*` tag triggers the four specialized release workflows:
 
+1. `.github/workflows/release.yml`: Validates, builds CLI archives for Linux, macOS, and Windows, and publishes the GitHub Release.
+2. `.github/workflows/cargo-release.yml`: Validates the Rust package and publishes `ripex` to Crates.io when `CARGO_REGISTRY_TOKEN` is configured.
+3. `.github/workflows/node-release.yml`: Builds native binaries and assembles the 5 platform packages and root `@astraive/ripex` package for npm.
+4. `.github/workflows/python-release.yml`: Builds sdist and cross-platform abi3 wheels for PyPI.
 ### 3. Verify GitHub release artifacts
 
 The workflow builds one release binary per target and uploads deterministic
@@ -103,14 +104,13 @@ only.
 
 ### 4. Publish to crates.io
 
-After inspecting the GitHub Release artifacts from the clean, reviewed
-release commit, perform a dry run and then publish intentionally:
+Crates.io publication is automated by `.github/workflows/cargo-release.yml` upon tag push when the `CARGO_REGISTRY_TOKEN` secret is configured in repository settings.
 
+Manual fallback:
 ```bash
 cargo publish --locked --dry-run
 cargo publish --locked
 ```
-
 Do not use `cargo package --allow-dirty` for a release. If packaging is needed
 for local inspection, preserve a clean checkout and use
 `cargo package --locked` without `--allow-dirty`.

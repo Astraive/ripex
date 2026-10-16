@@ -280,7 +280,8 @@ jobs:
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && env.PYPI_API_TOKEN != ''
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         uses: PyO3/maturin-action@v1
         with:
           command: upload
-          args: --non-interactive --skip-existing dist/*
+          args: --non-interactive --skip-existing -u __token__ -p ${{ secrets.PYPI_API_TOKEN }} dist/*

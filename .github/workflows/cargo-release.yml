@@ -102,7 +102,16 @@ jobs:
             cargo publish --locked --dry-run
           elif [ -n "${CARGO_REGISTRY_TOKEN:-}" ]; then
             echo "Publishing ripex to crates.io..."
-            cargo publish --locked
+            if cargo publish --locked; then
+              echo "Published successfully!"
+            else
+              echo "cargo publish returned non-zero, checking if version is already published..."
+              if cargo search ripex --limit 1 | grep -q 'ripex = "0.3.1"'; then
+                echo "ripex 0.3.1 is already published on crates.io."
+              else
+                exit 1
+              fi
+            fi
           else
             echo "::notice::CARGO_REGISTRY_TOKEN secret is not set; skipping automated crates.io publication. Run 'cargo publish --locked' manually or configure the repository secret."
           fi

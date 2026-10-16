@@ -972,6 +972,7 @@ fn comment_kind(kind: ripex::facts::CommentKind) -> &'static str {
         ripex::facts::CommentKind::Line => "line",
         ripex::facts::CommentKind::Block => "block",
         ripex::facts::CommentKind::Hashbang => "hashbang",
+        ripex::facts::CommentKind::Doc => "doc",
     }
 }
 

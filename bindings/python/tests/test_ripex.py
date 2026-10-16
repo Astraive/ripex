@@ -10,6 +10,7 @@ JS_SOURCE = """// JS line comment
 /* JS block comment */
 import { compute } from "./math.js";
 
+/** Calculator class JSDoc */
 export class Calculator {
     calculate(val) {
         return compute(val);
@@ -35,7 +36,9 @@ import os
 from math import sqrt
 
 class Geometry:
+    \"\"\"Geometry calculation class.\"\"\"
     def distance(self, x: float, y: float) -> float:
+        \"\"\"Compute euclidean distance.\"\"\"
         return sqrt(x * x + y * y)
 
 geo = Geometry()
@@ -47,6 +50,7 @@ package main
 
 import "fmt"
 
+// Service coordinates background jobs.
 type Service struct {
     Port int
 }
@@ -64,11 +68,13 @@ func main() {
 RUST_SOURCE = """// Rust module comment
 use std::sync::Arc;
 
+/// A background worker representation.
 pub struct Worker {
     pub id: u32,
 }
 
 impl Worker {
+    /// Creates a new worker instance.
     pub fn new(id: u32) -> Self {
         Self { id }
     }
@@ -86,6 +92,7 @@ pub fn start() {
 C_SOURCE = """/* C comment */
 #include <stdio.h>
 
+/** Record data structure documentation. */
 typedef struct {
     int id;
 } Record;
@@ -106,6 +113,7 @@ CPP_SOURCE = """// C++ comment
 #include <string>
 
 namespace engine {
+/** Engine execution task unit. */
 class Task {
 public:
     void execute() {
@@ -126,6 +134,9 @@ using System;
 
 namespace Enterprise.App
 {
+    /// <summary>
+    /// Performs enterprise background work.
+    /// </summary>
     public class Worker
     {
         public void PerformWork()
@@ -133,7 +144,6 @@ namespace Enterprise.App
             Console.WriteLine("Working...");
         }
     }
-
     public class Program
     {
         public static void Main(string[] args)
@@ -151,7 +161,7 @@ namespace Enterprise.App
 # ---------------------------------------------------------------------------
 
 def test_version() -> None:
-    assert ripex.__version__ == "0.3.1"
+    assert ripex.__version__ == "0.4.0"
 
 
 def test_supported_languages() -> None:
@@ -223,24 +233,29 @@ def test_parse_sync_typescript() -> None:
 
 def test_parse_sync_all_languages() -> None:
     test_cases = [
-        ("javascript", JS_SOURCE, {"extension": "js"}),
-        ("typescript", TS_SOURCE, {}),
-        ("python", PY_SOURCE, {}),
-        ("go", GO_SOURCE, {}),
-        ("rust", RUST_SOURCE, {}),
-        ("c", C_SOURCE, {}),
-        ("cpp", CPP_SOURCE, {}),
-        ("csharp", CSHARP_SOURCE, {}),
+        ("javascript", JS_SOURCE, {"extension": "js"}, "Calculator", "Calculator class JSDoc"),
+        ("typescript", TS_SOURCE, {}, "add", None),
+        ("python", PY_SOURCE, {}, "Geometry", "Geometry calculation"),
+        ("go", GO_SOURCE, {}, "Service", "Service coordinates"),
+        ("rust", RUST_SOURCE, {}, "Worker", "background worker"),
+        ("c", C_SOURCE, {}, "Record", "Record data structure"),
+        ("cpp", CPP_SOURCE, {}, "Task", "Engine execution task"),
+        ("csharp", CSHARP_SOURCE, {}, "Worker", "background work"),
     ]
 
-    for lang, source, kwargs in test_cases:
+    for lang, source, kwargs, sym_name, doc_substring in test_cases:
         out = ripex.parse_sync(source, language=lang, include_ast_summary=True, **kwargs)
         assert out.language == lang, f"Expected language {lang}, got {out.language}"
         assert out.status == "complete", f"Failed for {lang}: status {out.status}, diagnostics: {out.diagnostics}"
         assert out.completeness is True
         assert len(out.facts.symbols) > 0, f"No symbols extracted for {lang}"
+        assert len(out.comments) > 0, f"No comments extracted for {lang}"
         assert out.ast_summary is not None
-
+        if doc_substring is not None:
+            sym = next((s for s in out.facts.symbols if sym_name in s.name), None)
+            assert sym is not None, f"Symbol {sym_name} not found in {lang}"
+            assert sym.doc_string is not None, f"doc_string for {sym_name} in {lang} is None"
+            assert doc_substring in sym.doc_string, f"Expected '{doc_substring}' in doc_string of {sym_name}, got '{sym.doc_string}'"
 
 @pytest.mark.asyncio
 async def test_parse_async() -> None:

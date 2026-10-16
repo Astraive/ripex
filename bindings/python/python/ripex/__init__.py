@@ -29,7 +29,7 @@ from ._ripex import (
     supported_languages as _supported_languages,
 )
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 
 class Language(str, Enum):
@@ -54,6 +54,7 @@ class CommentKind(str, Enum):
     LINE = "line"
     BLOCK = "block"
     HASHBANG = "hashbang"
+    DOC = "doc"
 
 
 def parse_sync(

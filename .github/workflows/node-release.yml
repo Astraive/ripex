@@ -285,11 +285,11 @@ jobs:
 
       - name: Create platform package directories
         working-directory: bindings/node
-        run: pnpm exec napi create-npm-dirs
+        run: pnpm exec napi create-npm-dir -t .
 
       - name: Assemble binaries into platform packages
         working-directory: bindings/node
-        run: pnpm exec napi artifacts --output-dir artifacts --npm-dir npm
+        run: pnpm exec napi artifacts
 
       - name: Verify exactly five platform packages and binaries
         working-directory: bindings/node
@@ -432,11 +432,11 @@ jobs:
 
       - name: Create npm platform packages
         working-directory: bindings/node
-        run: pnpm exec napi create-npm-dirs
+        run: pnpm exec napi create-npm-dir -t .
 
       - name: Assemble platform binaries
         working-directory: bindings/node
-        run: pnpm exec napi artifacts --output-dir artifacts --npm-dir npm
+        run: pnpm exec napi artifacts
 
       - name: Publish platform packages before root package
         working-directory: bindings/node

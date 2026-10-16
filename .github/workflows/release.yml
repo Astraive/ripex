@@ -254,12 +254,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --title "Ripex $RELEASE_TAG" \
-            --generate-notes \
-            release-assets/*
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
+            echo "Release $RELEASE_TAG already exists, uploading assets..."
+            gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber release-assets/*
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Ripex $RELEASE_TAG" \
+              --generate-notes \
+              release-assets/*
+          fi
 
   publish-cargo:
     name: Publish to Crates.io

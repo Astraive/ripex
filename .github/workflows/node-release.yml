@@ -104,7 +104,7 @@ jobs:
             binary: ripex.linux-arm64-gnu.node
             cross: "1"
             runtime: false
-          - os: macos-13
+          - os: macos-14
             target: x86_64-apple-darwin
             binary: ripex.darwin-x64.node
             cross: "0"
@@ -147,11 +147,17 @@ jobs:
       - name: Install Node binding dependencies
         working-directory: bindings/node
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install aarch64 cross-compiler
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build release binding
         working-directory: bindings/node
         env:
           NAPI_TARGET: ${{ matrix.target }}
-          NAPI_CROSS: ${{ matrix.cross }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: npm run build:release
 
       - name: Verify target binary and package metadata

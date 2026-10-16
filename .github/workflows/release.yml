@@ -92,7 +92,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary: ripex
             archive_suffix: tar.gz
-          - os: macos-13
+          - os: macos-14
             target: x86_64-apple-darwin
             binary: ripex
             archive_suffix: tar.gz

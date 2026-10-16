@@ -14,7 +14,6 @@ function build() {
   const args = ['build', '--platform', '--dts', 'index.d.ts', '--js', 'index.cjs'];
   if (release) args.push('--release');
   if (process.env.NAPI_TARGET) args.push('--target', process.env.NAPI_TARGET);
-  if (process.env.NAPI_CROSS === '1') args.push('--use-napi-cross');
   args.push('--cargo-flags=--locked');
   execFileSync(process.execPath, [napiCli, ...args], { cwd: root, stdio: 'inherit' });
 

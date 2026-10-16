@@ -216,7 +216,7 @@ jobs:
         with:
           toolchain: nightly
       - name: Install latest cargo-fuzz
-        run: cargo +nightly install cargo-fuzz --version 0.12.0 --locked
+        run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
       - name: Replay committed fuzz seeds
         working-directory: tests/fuzz
         shell: bash
@@ -253,7 +253,7 @@ jobs:
         with:
           toolchain: nightly
       - name: Install latest cargo-fuzz
-        run: cargo +nightly install cargo-fuzz --version 0.12.0 --locked
+        run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
       - name: Fuzz all parsers briefly
         working-directory: tests/fuzz
         shell: bash
@@ -280,7 +280,7 @@ jobs:
             binary: ripex.linux-arm64-gnu.node
             cross: "1"
             runtime: false
-          - os: macos-13
+          - os: macos-14
             target: x86_64-apple-darwin
             binary: ripex.darwin-x64.node
             cross: "0"
@@ -320,12 +320,18 @@ jobs:
       - name: Install Node binding dependencies
         working-directory: bindings/node
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install aarch64 cross-compiler
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
 
       - name: Build Node binding
         working-directory: bindings/node
         env:
           NAPI_TARGET: ${{ matrix.target }}
-          NAPI_CROSS: ${{ matrix.cross }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: npm run build:release
 
       - name: Verify target binary and package metadata
@@ -398,7 +404,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-13, macos-14, windows-latest]
+        os: [ubuntu-latest, macos-14, windows-latest]
     steps:
       # actions/checkout v4.2.2
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -408,6 +414,7 @@ jobs:
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: 1.85.0
+          components: clippy, rustfmt
 
       - name: Install Python 3.12
         # actions/setup-python v5.4.0

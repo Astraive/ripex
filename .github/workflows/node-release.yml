@@ -440,6 +440,8 @@ jobs:
 
       - name: Publish platform packages before root package
         working-directory: bindings/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.NODE_AUTH_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -449,5 +451,7 @@ jobs:
 
       - name: Publish root package with provenance
         working-directory: bindings/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.NODE_AUTH_TOKEN }}
         shell: bash
-        run: npm publish --provenance
+        run: npm publish --provenance --access public
